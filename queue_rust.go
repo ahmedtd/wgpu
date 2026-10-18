@@ -105,3 +105,6 @@ func (q *Queue) SetSwapchainSuppressed(_ bool) {}
 func (q *Queue) LastSubmissionIndex() uint64 {
 	return 0
 }
+
+// HalQueue returns nil on Rust backend. There is no HAL layer.
+func (q *Queue) HalQueue() any { return nil }

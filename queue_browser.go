@@ -101,3 +101,7 @@ func (q *Queue) SetSwapchainSuppressed(_ bool) {}
 func (q *Queue) LastSubmissionIndex() uint64 {
 	return 0
 }
+
+// HalQueue returns nil on browser — there is no HAL layer.
+// This exists for API compatibility with the native backend.
+func (q *Queue) HalQueue() any { return nil }

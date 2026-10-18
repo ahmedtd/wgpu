@@ -65,3 +65,23 @@ func TestDeviceHalDeviceReleasedDevice(t *testing.T) {
 		t.Error("HalDevice on released device should return nil")
 	}
 }
+
+func TestQueueHalQueueOnLive(t *testing.T) {
+	_, _, device := newDevice(t)
+	defer device.Release()
+	requireHAL(t, device)
+
+	if device.Queue().HalQueue() == nil {
+		t.Error("HalQueue on live device should return non-nil")
+	}
+}
+
+func TestQueueHalQueueReleasedDevice(t *testing.T) {
+	_, _, device := newDevice(t)
+	queue := device.Queue()
+	device.Release()
+
+	if hal := queue.HalQueue(); hal != nil {
+		t.Error("HalQueue on released device should return nil")
+	}
+}

@@ -98,3 +98,16 @@ func NewSamplerFromHAL(halSampler hal.Sampler, device *Device) *Sampler {
 func (d *Device) HalDevice() hal.Device {
 	return d.halDevice()
 }
+
+// HalQueue returns the underlying HAL queue for advanced use cases.
+// This enables interop with code that needs direct HAL access (e.g.,
+// submitting HAL command buffers that record ray-tracing acceleration
+// structure builds).
+//
+// Returns nil if the owning device has been released or has no HAL backend.
+func (q *Queue) HalQueue() hal.Queue {
+	if q == nil || q.device == nil || q.device.halDevice() == nil {
+		return nil
+	}
+	return q.hal
+}
