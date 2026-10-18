@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **GLES Linux surface context lifetime** (#362, @admin-else) — a Surface that had to create its own
+  EGL context (Wayland, or when the detected window kind did not match the real
+  window) owned that context and freed it in `Surface.Destroy`. The Adapter,
+  Device and Queue share the same `*AdapterContext` and outlive the Surface, so
+  closing the window freed the EGL context first and the later `Device.Destroy`
+  locked a nil EGL context and dereferenced nil `*gl.Context` in
+  `DeleteVertexArrays`, panicking on shutdown. `CreateSurface` now adopts the
+  context on the Instance, which is released after the Device and Surface.
 - **Vertex buffer layout validation** (#359, @dvoyni) — `CreateRenderPipeline` now rejects an `arrayStride` that is not a multiple of 4 or exceeds `maxVertexBufferArrayStride`, and an attribute whose offset plus format size does not fit in the stride (or in `maxVertexBufferArrayStride` when the stride is 0). These layouts previously reached the backends, which disagreed about them. `arrayStride: 0` (broadcast) is rejected with a clear error until a native backend emulates it. New `CreateRenderPipelineError` kinds and fields name the buffer, attribute, stride and limit.
 - **`examples/triangle-headless` output path** — the PNG is written through `os.Root` opened on the target directory, so the file name given on the command line cannot leave that directory through `..` or a symlink. Same paths as before; this also clears gosec G703, which the latest golangci-lint reports and which failed the Lint job for every PR.
 
