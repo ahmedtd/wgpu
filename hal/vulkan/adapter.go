@@ -7,6 +7,7 @@ package vulkan
 
 import (
 	"fmt"
+	"runtime"
 	"unsafe"
 
 	"github.com/go-webgpu/goffi/ffi"
@@ -21,17 +22,28 @@ type Adapter struct {
 	physicalDevice vk.PhysicalDevice
 	properties     vk.PhysicalDeviceProperties
 	features       vk.PhysicalDeviceFeatures
+
+	// extensions is the set of device extensions the physical device supports.
+	extensions map[string]struct{}
+
+	// rayTracing records ray query support (gputypes.FeatureRayQuery).
+	rayTracing rayTracingCaps
 }
 
 // Open creates a logical device with the requested features and limits.
-func (a *Adapter) Open(_ gputypes.Features, _ gputypes.Limits) (hal.OpenDevice, error) {
-	return a.open(nil)
+func (a *Adapter) Open(features gputypes.Features, _ gputypes.Limits) (hal.OpenDevice, error) {
+	return a.open(features, nil)
 }
 
 // open creates a logical device, optionally constraining it to one queue
 // family. Surface-qualified adapters use the constrained path so the queue
 // selected during the surface query is the same queue passed into Open.
-func (a *Adapter) open(requestedQueueFamily *uint32) (hal.OpenDevice, error) {
+func (a *Adapter) open(requestedFeatures gputypes.Features, requestedQueueFamily *uint32) (hal.OpenDevice, error) {
+	enableRayQuery := requestedFeatures.Contains(gputypes.FeatureRayQuery)
+	if enableRayQuery && !a.rayTracing.rayQuery {
+		return hal.OpenDevice{}, fmt.Errorf("vulkan: FeatureRayQuery requested but not supported by this adapter")
+	}
+
 	// Find queue families
 	var queueFamilyCount uint32
 	vkGetPhysicalDeviceQueueFamilyProperties(a.instance, a.physicalDevice, &queueFamilyCount, nil)
@@ -60,23 +72,12 @@ func (a *Adapter) open(requestedQueueFamily *uint32) (hal.OpenDevice, error) {
 		PQueuePriorities: &queuePriority,
 	}
 
-	// Query supported device extensions to enable optional features.
-	hasIncrementalPresent := false
-	{
-		var extCount uint32
-		a.instance.cmds.EnumerateDeviceExtensionProperties(a.physicalDevice, 0, &extCount, nil)
-		if extCount > 0 {
-			extProps := make([]vk.ExtensionProperties, extCount)
-			a.instance.cmds.EnumerateDeviceExtensionProperties(a.physicalDevice, 0, &extCount, &extProps[0])
-			for i := range extProps {
-				name := cStringToGo(extProps[i].ExtensionName[:])
-				if name == "VK_KHR_incremental_present" {
-					hasIncrementalPresent = true
-					break
-				}
-			}
-		}
+	// Supported device extensions (queried at enumeration) gate optional features.
+	extensionSet := a.extensions
+	if extensionSet == nil {
+		extensionSet = enumerateDeviceExtensions(&a.instance.cmds, a.physicalDevice)
 	}
+	_, hasIncrementalPresent := extensionSet["VK_KHR_incremental_present"]
 
 	// Required extensions
 	extensions := []string{
@@ -87,6 +88,14 @@ func (a *Adapter) open(requestedQueueFamily *uint32) (hal.OpenDevice, error) {
 	// so the compositor can skip recompositing unchanged pixels.
 	if hasIncrementalPresent {
 		extensions = append(extensions, "VK_KHR_incremental_present\x00")
+	}
+	// Ray query: VK_KHR_deferred_host_operations, VK_KHR_acceleration_structure
+	// and VK_KHR_ray_query. Buffer device address is core in Vulkan 1.2.
+	// Reference: Rust adapter.rs PhysicalDeviceCapabilities::get_required_extensions.
+	if enableRayQuery {
+		for _, ext := range rayQueryDeviceExtensions {
+			extensions = append(extensions, ext+"\x00")
+		}
 	}
 	extensionPtrs := make([]uintptr, len(extensions))
 	for i, ext := range extensions {
@@ -127,8 +136,27 @@ func (a *Adapter) open(requestedQueueFamily *uint32) (hal.OpenDevice, error) {
 		deviceCreateInfo.PNext = (*uintptr)(unsafe.Pointer(&vulkan12Enable))
 	}
 
+	// Ray query feature chain: Vulkan12 (bufferDeviceAddress) ->
+	// AccelerationStructure -> RayQuery.
+	// Reference: Rust adapter.rs PhysicalDeviceFeatures::from_extensions_and_requested_features.
+	var asEnable vk.PhysicalDeviceAccelerationStructureFeaturesKHR
+	var rayQueryEnable vk.PhysicalDeviceRayQueryFeaturesKHR
+	if enableRayQuery {
+		rayQueryEnable.SType = vk.StructureTypePhysicalDeviceRayQueryFeaturesKhr
+		rayQueryEnable.RayQuery = vk.Bool32(vk.True)
+		asEnable.SType = vk.StructureTypePhysicalDeviceAccelerationStructureFeaturesKhr
+		asEnable.AccelerationStructure = vk.Bool32(vk.True)
+		asEnable.PNext = (*uintptr)(unsafe.Pointer(&rayQueryEnable))
+		vulkan12Enable.SType = vk.StructureTypePhysicalDeviceVulkan12Features
+		vulkan12Enable.BufferDeviceAddress = vk.Bool32(vk.True)
+		vulkan12Enable.PNext = (*uintptr)(unsafe.Pointer(&asEnable))
+		deviceCreateInfo.PNext = (*uintptr)(unsafe.Pointer(&vulkan12Enable))
+	}
+
 	var device vk.Device
 	result := vkCreateDevice(a.instance, a.physicalDevice, &deviceCreateInfo, nil, &device)
+	runtime.KeepAlive(extensions)
+	runtime.KeepAlive(extensionPtrs)
 	if result != vk.Success {
 		return hal.OpenDevice{}, fmt.Errorf("vulkan: vkCreateDevice failed: %d", result)
 	}
@@ -154,8 +182,17 @@ func (a *Adapter) open(requestedQueueFamily *uint32) (hal.OpenDevice, error) {
 		supportsDrawIndirectCount:  supportsDrawIndirectCountFeature(a.properties.ApiVersion),
 		maxDrawIndirectCount:       a.properties.Limits.MaxDrawIndirectCount,
 		supportsIncrementalPresent: hasIncrementalPresent,
+		bufferDeviceAddress:        enableRayQuery,
 	}
 	loadDrawIndirectCountProcs(dev)
+
+	if enableRayQuery {
+		if !deviceCmds.HasAccelerationStructure() {
+			vkDestroyDevice(device, nil)
+			return hal.OpenDevice{}, fmt.Errorf("vulkan: failed to load VK_KHR_acceleration_structure functions")
+		}
+		dev.rayQuery = true
+	}
 
 	// Initialize synchronization fence (VK-IMPL-001 / VK-IMPL-003).
 	// Prefer timeline semaphore (Vulkan 1.2+); fall back to fencePool of binary
@@ -307,8 +344,8 @@ type qualifiedAdapter struct {
 	snapshot    surfaceSnapshot
 }
 
-func (a *qualifiedAdapter) Open(_ gputypes.Features, _ gputypes.Limits) (hal.OpenDevice, error) {
-	return a.base.open(&a.queueFamily)
+func (a *qualifiedAdapter) Open(features gputypes.Features, _ gputypes.Limits) (hal.OpenDevice, error) {
+	return a.base.open(features, &a.queueFamily)
 }
 
 func (a *qualifiedAdapter) TextureFormatCapabilities(format gputypes.TextureFormat) hal.TextureFormatCapabilities {

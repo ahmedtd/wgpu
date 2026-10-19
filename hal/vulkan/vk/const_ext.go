@@ -71,6 +71,14 @@ const (
 	// Vulkan 1.2 core — required for AS backing buffers and scratch buffers.
 	BufferUsageShaderDeviceAddressBit BufferUsageFlagBits = 1 << 17
 
+	// StructureTypeMemoryAllocateFlagsInfo = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO
+	// Vulkan 1.1 core — chained into VkMemoryAllocateInfo to request device-address memory.
+	StructureTypeMemoryAllocateFlagsInfo StructureType = 1000060000
+
+	// MemoryAllocateDeviceAddressBit = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT
+	// Vulkan 1.2 core — required for memory bound to SHADER_DEVICE_ADDRESS buffers.
+	MemoryAllocateDeviceAddressBit MemoryAllocateFlagBits = 1 << 1
+
 	// === VK_KHR_acceleration_structure object type ===
 
 	// ObjectTypeAccelerationStructureKHR = VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR (1000150000)

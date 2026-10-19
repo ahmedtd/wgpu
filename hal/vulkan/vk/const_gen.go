@@ -3678,8 +3678,8 @@ const (
 	ComponentTypeBfloat16Khr   ComponentTypeKHR = 1000141000
 	ComponentTypeSint8PackedNv ComponentTypeKHR = 1000491000
 	ComponentTypeUint8PackedNv ComponentTypeKHR = 1000491001
-	ComponentTypeFloat8E4m3Ext ComponentTypeKHR = 1000567002
-	ComponentTypeFloat8E5m2Ext ComponentTypeKHR = 1000567003
+	ComponentTypeFloat8E4m3Ext ComponentTypeKHR = 1000491002
+	ComponentTypeFloat8E5m2Ext ComponentTypeKHR = 1000491003
 )
 
 // VkCopyAccelerationStructureModeKHR extension values
@@ -3690,8 +3690,8 @@ const (
 
 // VkDebugReportObjectTypeEXT extension values
 const (
-	DebugReportObjectTypeSamplerYcbcrConversionExt   DebugReportObjectTypeEXT = 1000011000
-	DebugReportObjectTypeDescriptorUpdateTemplateExt DebugReportObjectTypeEXT = 1000011000
+	DebugReportObjectTypeSamplerYcbcrConversionExt   DebugReportObjectTypeEXT = 1000156000
+	DebugReportObjectTypeDescriptorUpdateTemplateExt DebugReportObjectTypeEXT = 1000085000
 	DebugReportObjectTypeCuModuleNvxExt              DebugReportObjectTypeEXT = 1000029000
 	DebugReportObjectTypeCuFunctionNvxExt            DebugReportObjectTypeEXT = 1000029001
 	DebugReportObjectTypeAccelerationStructureKhrExt DebugReportObjectTypeEXT = 1000150000
@@ -3736,7 +3736,7 @@ const (
 	DescriptorTypeSampleWeightImageQcom              DescriptorType = 1000440000
 	DescriptorTypeBlockMatchImageQcom                DescriptorType = 1000440001
 	DescriptorTypeTensorArm                          DescriptorType = 1000460000
-	DescriptorTypeMutableExt                         DescriptorType = 1000494000
+	DescriptorTypeMutableExt                         DescriptorType = 1000351000
 	DescriptorTypePartitionedAccelerationStructureNv DescriptorType = 1000570000
 )
 
@@ -3822,7 +3822,7 @@ const (
 
 // VkFilter extension values
 const (
-	FilterCubicExt Filter = 1000170000
+	FilterCubicExt Filter = 1000015000
 )
 
 // VkFormat extension values
@@ -3936,7 +3936,7 @@ const (
 	ImageLayoutVideoDecodeDpbKhr                       ImageLayout = 1000024002
 	ImageLayoutSharedPresentKhr                        ImageLayout = 1000111000
 	ImageLayoutFragmentDensityMapOptimalExt            ImageLayout = 1000218000
-	ImageLayoutFragmentShadingRateAttachmentOptimalKhr ImageLayout = 1000226003
+	ImageLayoutFragmentShadingRateAttachmentOptimalKhr ImageLayout = 1000164003
 	ImageLayoutVideoEncodeDstKhr                       ImageLayout = 1000299000
 	ImageLayoutVideoEncodeSrcKhr                       ImageLayout = 1000299001
 	ImageLayoutVideoEncodeDpbKhr                       ImageLayout = 1000299002
@@ -3980,7 +3980,7 @@ const (
 
 // VkIndexType extension values
 const (
-	IndexTypeNoneKhr IndexType = 1000150000
+	IndexTypeNoneKhr IndexType = 1000165000
 )
 
 // VkIndirectCommandsTokenTypeEXT extension values
@@ -4090,7 +4090,7 @@ const (
 // VkPipelineBindPoint extension values
 const (
 	PipelineBindPointExecutionGraphAmdx   PipelineBindPoint = 1000134000
-	PipelineBindPointRayTracingKhr        PipelineBindPoint = 1000347000
+	PipelineBindPointRayTracingKhr        PipelineBindPoint = 1000165000
 	PipelineBindPointSubpassShadingHuawei PipelineBindPoint = 1000369003
 	PipelineBindPointDataGraphArm         PipelineBindPoint = 1000507000
 )
@@ -4228,7 +4228,7 @@ const (
 const (
 	PresentModeSharedDemandRefreshKhr     PresentModeKHR = 1000111000
 	PresentModeSharedContinuousRefreshKhr PresentModeKHR = 1000111001
-	PresentModeFifoLatestReadyKhr         PresentModeKHR = 1000621000
+	PresentModeFifoLatestReadyKhr         PresentModeKHR = 1000361000
 )
 
 // VkQueryPipelineStatisticFlagBits extension values
@@ -4391,12 +4391,12 @@ const (
 const (
 	StructureTypeSwapchainCreateInfoKhr                                       StructureType = 1000001000
 	StructureTypePresentInfoKhr                                               StructureType = 1000001001
-	StructureTypeDeviceGroupPresentCapabilitiesKhr                            StructureType = 1000001007
-	StructureTypeImageSwapchainCreateInfoKhr                                  StructureType = 1000001008
-	StructureTypeBindImageMemorySwapchainInfoKhr                              StructureType = 1000001009
-	StructureTypeAcquireNextImageInfoKhr                                      StructureType = 1000001010
-	StructureTypeDeviceGroupPresentInfoKhr                                    StructureType = 1000001011
-	StructureTypeDeviceGroupSwapchainCreateInfoKhr                            StructureType = 1000001012
+	StructureTypeDeviceGroupPresentCapabilitiesKhr                            StructureType = 1000060007
+	StructureTypeImageSwapchainCreateInfoKhr                                  StructureType = 1000060008
+	StructureTypeBindImageMemorySwapchainInfoKhr                              StructureType = 1000060009
+	StructureTypeAcquireNextImageInfoKhr                                      StructureType = 1000060010
+	StructureTypeDeviceGroupPresentInfoKhr                                    StructureType = 1000060011
+	StructureTypeDeviceGroupSwapchainCreateInfoKhr                            StructureType = 1000060012
 	StructureTypeDisplayModeCreateInfoKhr                                     StructureType = 1000002000
 	StructureTypeDisplaySurfaceCreateInfoKhr                                  StructureType = 1000002001
 	StructureTypeDisplayPresentInfoKhr                                        StructureType = 1000003000
@@ -4515,7 +4515,7 @@ const (
 	StructureTypeSwapchainCounterCreateInfoExt                                StructureType = 1000091003
 	StructureTypePresentTimesInfoGoogle                                       StructureType = 1000092000
 	StructureTypePhysicalDeviceMultiviewPerViewAttributesPropertiesNvx        StructureType = 1000097000
-	StructureTypeMultiviewPerViewAttributesInfoNvx                            StructureType = 1000097009
+	StructureTypeMultiviewPerViewAttributesInfoNvx                            StructureType = 1000044009
 	StructureTypePipelineViewportSwizzleStateCreateInfoNv                     StructureType = 1000098000
 	StructureTypePhysicalDeviceDiscardRectanglePropertiesExt                  StructureType = 1000099000
 	StructureTypePipelineDiscardRectangleStateCreateInfoExt                   StructureType = 1000099001
@@ -4566,7 +4566,7 @@ const (
 	StructureTypeExecutionGraphPipelineScratchSizeAmdx                        StructureType = 1000134002
 	StructureTypeExecutionGraphPipelineCreateInfoAmdx                         StructureType = 1000134003
 	StructureTypePipelineShaderStageNodeCreateInfoAmdx                        StructureType = 1000134004
-	StructureTypeAttachmentSampleCountInfoAmd                                 StructureType = 1000136008
+	StructureTypeAttachmentSampleCountInfoAmd                                 StructureType = 1000044008
 	StructureTypePhysicalDeviceShaderBfloat16FeaturesKhr                      StructureType = 1000141000
 	StructureTypeSampleLocationsInfoExt                                       StructureType = 1000143000
 	StructureTypeRenderPassSampleLocationsBeginInfoExt                        StructureType = 1000143001
@@ -4594,9 +4594,9 @@ const (
 	StructureTypeAccelerationStructureBuildSizesInfoKhr                       StructureType = 1000150020
 	StructureTypePhysicalDeviceRayTracingPipelineFeaturesKhr                  StructureType = 1000347000
 	StructureTypePhysicalDeviceRayTracingPipelinePropertiesKhr                StructureType = 1000347001
-	StructureTypeRayTracingPipelineCreateInfoKhr                              StructureType = 1000347015
-	StructureTypeRayTracingShaderGroupCreateInfoKhr                           StructureType = 1000347016
-	StructureTypeRayTracingPipelineInterfaceCreateInfoKhr                     StructureType = 1000347018
+	StructureTypeRayTracingPipelineCreateInfoKhr                              StructureType = 1000150015
+	StructureTypeRayTracingShaderGroupCreateInfoKhr                           StructureType = 1000150016
+	StructureTypeRayTracingPipelineInterfaceCreateInfoKhr                     StructureType = 1000150018
 	StructureTypePhysicalDeviceRayQueryFeaturesKhr                            StructureType = 1000348013
 	StructureTypePipelineCoverageModulationStateCreateInfoNv                  StructureType = 1000152000
 	StructureTypePhysicalDeviceShaderSmBuiltinsFeaturesNv                     StructureType = 1000154000
@@ -4652,8 +4652,8 @@ const (
 	StructureTypePhysicalDeviceExclusiveScissorFeaturesNv                     StructureType = 1000205002
 	StructureTypeCheckpointDataNv                                             StructureType = 1000206000
 	StructureTypeQueueFamilyCheckpointPropertiesNv                            StructureType = 1000206001
-	StructureTypeQueueFamilyCheckpointProperties2Nv                           StructureType = 1000206008
-	StructureTypeCheckpointData2Nv                                            StructureType = 1000206009
+	StructureTypeQueueFamilyCheckpointProperties2Nv                           StructureType = 1000314008
+	StructureTypeCheckpointData2Nv                                            StructureType = 1000314009
 	StructureTypePhysicalDevicePresentTimingFeaturesExt                       StructureType = 1000208000
 	StructureTypeSwapchainTimingPropertiesExt                                 StructureType = 1000208001
 	StructureTypeSwapchainTimeDomainPropertiesExt                             StructureType = 1000208002
@@ -4679,13 +4679,13 @@ const (
 	StructureTypePhysicalDeviceFragmentDensityMapFeaturesExt                  StructureType = 1000218000
 	StructureTypePhysicalDeviceFragmentDensityMapPropertiesExt                StructureType = 1000218001
 	StructureTypeRenderPassFragmentDensityMapCreateInfoExt                    StructureType = 1000218002
-	StructureTypeRenderingFragmentDensityMapAttachmentInfoExt                 StructureType = 1000218007
+	StructureTypeRenderingFragmentDensityMapAttachmentInfoExt                 StructureType = 1000044007
 	StructureTypeFragmentShadingRateAttachmentInfoKhr                         StructureType = 1000226000
 	StructureTypePipelineFragmentShadingRateStateCreateInfoKhr                StructureType = 1000226001
 	StructureTypePhysicalDeviceFragmentShadingRatePropertiesKhr               StructureType = 1000226002
 	StructureTypePhysicalDeviceFragmentShadingRateFeaturesKhr                 StructureType = 1000226003
 	StructureTypePhysicalDeviceFragmentShadingRateKhr                         StructureType = 1000226004
-	StructureTypeRenderingFragmentShadingRateAttachmentInfoKhr                StructureType = 1000226006
+	StructureTypeRenderingFragmentShadingRateAttachmentInfoKhr                StructureType = 1000044006
 	StructureTypePhysicalDeviceShaderCoreProperties2Amd                       StructureType = 1000227000
 	StructureTypePhysicalDeviceCoherentMemoryFeaturesAmd                      StructureType = 1000229000
 	StructureTypePhysicalDeviceShaderImageAtomicInt64FeaturesExt              StructureType = 1000234000
@@ -4809,7 +4809,7 @@ const (
 	StructureTypePhysicalDeviceGraphicsPipelineLibraryPropertiesExt           StructureType = 1000320001
 	StructureTypeGraphicsPipelineLibraryCreateInfoExt                         StructureType = 1000320002
 	StructureTypePhysicalDeviceShaderEarlyAndLateFragmentTestsFeaturesAmd     StructureType = 1000321000
-	StructureTypePhysicalDeviceFragmentShaderBarycentricFeaturesKhr           StructureType = 1000322000
+	StructureTypePhysicalDeviceFragmentShaderBarycentricFeaturesKhr           StructureType = 1000203000
 	StructureTypePhysicalDeviceFragmentShaderBarycentricPropertiesKhr         StructureType = 1000322000
 	StructureTypePhysicalDeviceShaderSubgroupUniformControlFlowFeaturesKhr    StructureType = 1000323000
 	StructureTypePhysicalDeviceFragmentShadingRateEnumsPropertiesNv           StructureType = 1000326000
@@ -4996,7 +4996,7 @@ const (
 	StructureTypePhysicalDeviceShaderModuleIdentifierPropertiesExt            StructureType = 1000462001
 	StructureTypePipelineShaderStageModuleIdentifierCreateInfoExt             StructureType = 1000462002
 	StructureTypeShaderModuleIdentifierExt                                    StructureType = 1000462003
-	StructureTypePhysicalDeviceRasterizationOrderAttachmentAccessFeaturesExt  StructureType = 1000463000
+	StructureTypePhysicalDeviceRasterizationOrderAttachmentAccessFeaturesExt  StructureType = 1000342000
 	StructureTypePhysicalDeviceOpticalFlowFeaturesNv                          StructureType = 1000464000
 	StructureTypePhysicalDeviceOpticalFlowPropertiesNv                        StructureType = 1000464001
 	StructureTypeOpticalFlowImageFormatInfoNv                                 StructureType = 1000464002
@@ -5037,15 +5037,15 @@ const (
 	StructureTypeTilePropertiesQcom                                           StructureType = 1000484001
 	StructureTypePhysicalDeviceAmigoProfilingFeaturesSec                      StructureType = 1000485000
 	StructureTypeAmigoProfilingSubmitInfoSec                                  StructureType = 1000485001
-	StructureTypeSurfacePresentModeKhr                                        StructureType = 1000486000
-	StructureTypeSurfacePresentScalingCapabilitiesKhr                         StructureType = 1000486001
-	StructureTypeSurfacePresentModeCompatibilityKhr                           StructureType = 1000486002
-	StructureTypePhysicalDeviceSwapchainMaintenance1FeaturesKhr               StructureType = 1000487000
-	StructureTypeSwapchainPresentFenceInfoKhr                                 StructureType = 1000487001
-	StructureTypeSwapchainPresentModesCreateInfoKhr                           StructureType = 1000487002
-	StructureTypeSwapchainPresentModeInfoKhr                                  StructureType = 1000487003
-	StructureTypeSwapchainPresentScalingCreateInfoKhr                         StructureType = 1000487004
-	StructureTypeReleaseSwapchainImagesInfoKhr                                StructureType = 1000487005
+	StructureTypeSurfacePresentModeKhr                                        StructureType = 1000274000
+	StructureTypeSurfacePresentScalingCapabilitiesKhr                         StructureType = 1000274001
+	StructureTypeSurfacePresentModeCompatibilityKhr                           StructureType = 1000274002
+	StructureTypePhysicalDeviceSwapchainMaintenance1FeaturesKhr               StructureType = 1000275000
+	StructureTypeSwapchainPresentFenceInfoKhr                                 StructureType = 1000275001
+	StructureTypeSwapchainPresentModesCreateInfoKhr                           StructureType = 1000275002
+	StructureTypeSwapchainPresentModeInfoKhr                                  StructureType = 1000275003
+	StructureTypeSwapchainPresentScalingCreateInfoKhr                         StructureType = 1000275004
+	StructureTypeReleaseSwapchainImagesInfoKhr                                StructureType = 1000275005
 	StructureTypePhysicalDeviceMultiviewPerViewViewportsFeaturesQcom          StructureType = 1000488000
 	StructureTypeSemaphoreSciSyncPoolCreateInfoNv                             StructureType = 1000489000
 	StructureTypeSemaphoreSciSyncCreateInfoNv                                 StructureType = 1000489001
@@ -5059,8 +5059,8 @@ const (
 	StructureTypeConvertCooperativeVectorMatrixInfoNv                         StructureType = 1000491004
 	StructureTypePhysicalDeviceExtendedSparseAddressSpaceFeaturesNv           StructureType = 1000492000
 	StructureTypePhysicalDeviceExtendedSparseAddressSpacePropertiesNv         StructureType = 1000492001
-	StructureTypePhysicalDeviceMutableDescriptorTypeFeaturesExt               StructureType = 1000494000
-	StructureTypeMutableDescriptorTypeCreateInfoExt                           StructureType = 1000494002
+	StructureTypePhysicalDeviceMutableDescriptorTypeFeaturesExt               StructureType = 1000351000
+	StructureTypeMutableDescriptorTypeCreateInfoExt                           StructureType = 1000351002
 	StructureTypePhysicalDeviceLegacyVertexAttributesFeaturesExt              StructureType = 1000495000
 	StructureTypePhysicalDeviceLegacyVertexAttributesPropertiesExt            StructureType = 1000495001
 	StructureTypeLayerSettingsCreateInfoExt                                   StructureType = 1000496000
@@ -5102,7 +5102,7 @@ const (
 	StructureTypeDataGraphPipelineConstantTensorSemiStructuredSparsityInfoArm StructureType = 1000507015
 	StructureTypePhysicalDeviceMultiviewPerViewRenderAreasFeaturesQcom        StructureType = 1000510000
 	StructureTypeMultiviewPerViewRenderAreasRenderPassBeginInfoQcom           StructureType = 1000510001
-	StructureTypePhysicalDeviceComputeShaderDerivativesFeaturesKhr            StructureType = 1000511000
+	StructureTypePhysicalDeviceComputeShaderDerivativesFeaturesKhr            StructureType = 1000201000
 	StructureTypePhysicalDeviceComputeShaderDerivativesPropertiesKhr          StructureType = 1000511000
 	StructureTypeVideoDecodeAv1CapabilitiesKhr                                StructureType = 1000512000
 	StructureTypeVideoDecodeAv1PictureInfoKhr                                 StructureType = 1000512001
@@ -5145,7 +5145,7 @@ const (
 	StructureTypeExternalFormatQnx                                            StructureType = 1000529003
 	StructureTypePhysicalDeviceExternalMemoryScreenBufferFeaturesQnx          StructureType = 1000529004
 	StructureTypePhysicalDeviceLayeredDriverPropertiesMsft                    StructureType = 1000530000
-	StructureTypeCalibratedTimestampInfoKhr                                   StructureType = 1000543000
+	StructureTypeCalibratedTimestampInfoKhr                                   StructureType = 1000184000
 	StructureTypeSetDescriptorBufferOffsetsInfoExt                            StructureType = 1000545007
 	StructureTypeBindDescriptorBufferEmbeddedSamplersInfoExt                  StructureType = 1000545008
 	StructureTypePhysicalDeviceDescriptorPoolOverallocationFeaturesNv         StructureType = 1000546000
@@ -5155,11 +5155,11 @@ const (
 	StructureTypeTileMemoryBindInfoQcom                                       StructureType = 1000547003
 	StructureTypeTileMemorySizeInfoQcom                                       StructureType = 1000547004
 	StructureTypePhysicalDeviceCopyMemoryIndirectFeaturesKhr                  StructureType = 1000549000
-	StructureTypePhysicalDeviceCopyMemoryIndirectPropertiesKhr                StructureType = 1000549001
+	StructureTypePhysicalDeviceCopyMemoryIndirectPropertiesKhr                StructureType = 1000426001
 	StructureTypeCopyMemoryIndirectInfoKhr                                    StructureType = 1000549002
 	StructureTypeCopyMemoryToImageIndirectInfoKhr                             StructureType = 1000549003
-	StructureTypePhysicalDeviceMemoryDecompressionFeaturesExt                 StructureType = 1000550000
-	StructureTypePhysicalDeviceMemoryDecompressionPropertiesExt               StructureType = 1000550001
+	StructureTypePhysicalDeviceMemoryDecompressionFeaturesExt                 StructureType = 1000427000
+	StructureTypePhysicalDeviceMemoryDecompressionPropertiesExt               StructureType = 1000427001
 	StructureTypeDecompressMemoryInfoExt                                      StructureType = 1000550002
 	StructureTypeDisplaySurfaceStereoCreateInfoNv                             StructureType = 1000551000
 	StructureTypeDisplayModeStereoPropertiesNv                                StructureType = 1000551001
@@ -5240,9 +5240,9 @@ const (
 	StructureTypeVideoDecodeH265InlineSessionParametersInfoKhr                StructureType = 1000586002
 	StructureTypeVideoDecodeAv1InlineSessionParametersInfoKhr                 StructureType = 1000586003
 	StructureTypeSurfaceCreateInfoOhos                                        StructureType = 1000685000
-	StructureTypeNativeBufferOhos                                             StructureType = 1000588001
-	StructureTypeSwapchainImageCreateInfoOhos                                 StructureType = 1000588002
-	StructureTypePhysicalDevicePresentationPropertiesOhos                     StructureType = 1000588003
+	StructureTypeNativeBufferOhos                                             StructureType = 1000453001
+	StructureTypeSwapchainImageCreateInfoOhos                                 StructureType = 1000453002
+	StructureTypePhysicalDevicePresentationPropertiesOhos                     StructureType = 1000453003
 	StructureTypePhysicalDeviceHdrVividFeaturesHuawei                         StructureType = 1000590000
 	StructureTypeHdrVividDynamicMetadataHuawei                                StructureType = 1000590001
 	StructureTypePhysicalDeviceCooperativeMatrix2FeaturesNv                   StructureType = 1000593000
@@ -5252,7 +5252,7 @@ const (
 	StructureTypeImportMemoryMetalHandleInfoExt                               StructureType = 1000602000
 	StructureTypeMemoryMetalHandlePropertiesExt                               StructureType = 1000602001
 	StructureTypeMemoryGetMetalHandleInfoExt                                  StructureType = 1000602002
-	StructureTypePhysicalDeviceDepthClampZeroOneFeaturesKhr                   StructureType = 1000604000
+	StructureTypePhysicalDeviceDepthClampZeroOneFeaturesKhr                   StructureType = 1000421000
 	StructureTypePhysicalDevicePerformanceCountersByRegionFeaturesArm         StructureType = 1000605000
 	StructureTypePhysicalDevicePerformanceCountersByRegionPropertiesArm       StructureType = 1000605001
 	StructureTypePerformanceCounterArm                                        StructureType = 1000605002
@@ -5263,15 +5263,15 @@ const (
 	StructureTypePhysicalDeviceFragmentDensityMapLayeredFeaturesValve         StructureType = 1000611000
 	StructureTypePhysicalDeviceFragmentDensityMapLayeredPropertiesValve       StructureType = 1000611001
 	StructureTypePipelineFragmentDensityMapLayeredCreateInfoValve             StructureType = 1000611002
-	StructureTypePhysicalDeviceRobustness2FeaturesKhr                         StructureType = 1000612000
-	StructureTypePhysicalDeviceRobustness2PropertiesKhr                       StructureType = 1000612001
+	StructureTypePhysicalDeviceRobustness2FeaturesKhr                         StructureType = 1000286000
+	StructureTypePhysicalDeviceRobustness2PropertiesKhr                       StructureType = 1000286001
 	StructureTypeSetPresentConfigNv                                           StructureType = 1000613000
 	StructureTypePhysicalDevicePresentMeteringFeaturesNv                      StructureType = 1000613001
-	StructureTypePhysicalDeviceFragmentDensityMapOffsetFeaturesExt            StructureType = 1000619000
-	StructureTypePhysicalDeviceFragmentDensityMapOffsetPropertiesExt          StructureType = 1000619001
-	StructureTypeRenderPassFragmentDensityMapOffsetEndInfoExt                 StructureType = 1000619002
+	StructureTypePhysicalDeviceFragmentDensityMapOffsetFeaturesExt            StructureType = 1000425000
+	StructureTypePhysicalDeviceFragmentDensityMapOffsetPropertiesExt          StructureType = 1000425001
+	StructureTypeRenderPassFragmentDensityMapOffsetEndInfoExt                 StructureType = 1000425002
 	StructureTypePhysicalDeviceZeroInitializeDeviceMemoryFeaturesExt          StructureType = 1000620000
-	StructureTypePhysicalDevicePresentModeFifoLatestReadyFeaturesKhr          StructureType = 1000621000
+	StructureTypePhysicalDevicePresentModeFifoLatestReadyFeaturesKhr          StructureType = 1000361000
 	StructureTypePhysicalDeviceShader64BitIndexingFeaturesExt                 StructureType = 1000627000
 	StructureTypePhysicalDeviceCustomResolveFeaturesExt                       StructureType = 1000628000
 	StructureTypeBeginCustomResolveInfoExt                                    StructureType = 1000628001
@@ -5281,7 +5281,7 @@ const (
 	StructureTypePhysicalDeviceMaintenance10FeaturesKhr                       StructureType = 1000630000
 	StructureTypePhysicalDeviceMaintenance10PropertiesKhr                     StructureType = 1000630001
 	StructureTypeRenderingAttachmentFlagsInfoKhr                              StructureType = 1000630002
-	StructureTypeRenderingEndInfoKhr                                          StructureType = 1000630003
+	StructureTypeRenderingEndInfoKhr                                          StructureType = 1000619003
 	StructureTypeResolveImageModeInfoKhr                                      StructureType = 1000630004
 	StructureTypePhysicalDevicePipelineCacheIncrementalModeFeaturesSec        StructureType = 1000637000
 	StructureTypePhysicalDeviceShaderUniformBufferUnsizedArrayFeaturesExt     StructureType = 1000642000
@@ -5294,7 +5294,7 @@ const (
 
 // VkSubpassContents extension values
 const (
-	SubpassContentsInlineAndSecondaryCommandBuffersKhr SubpassContents = 1000562000
+	SubpassContentsInlineAndSecondaryCommandBuffersKhr SubpassContents = 1000451000
 )
 
 // VkSubpassDescriptionFlagBits extension values

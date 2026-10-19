@@ -128,12 +128,15 @@ type ExtensionRequire struct {
 
 // ExtensionEnum is an enum value added by an extension
 type ExtensionEnum struct {
-	Name    string `xml:"name,attr"`
-	Value   string `xml:"value,attr"`
-	Offset  string `xml:"offset,attr"`
-	Extends string `xml:"extends,attr"`
-	Bitpos  string `xml:"bitpos,attr"`
-	Dir     string `xml:"dir,attr"` // "-" for negative values
+	Name   string `xml:"name,attr"`
+	Value  string `xml:"value,attr"`
+	Offset string `xml:"offset,attr"`
+	// Extnumber overrides the owning extension's number when computing an
+	// offset-based value (used when an extension reuses another's enum block).
+	Extnumber string `xml:"extnumber,attr"`
+	Extends   string `xml:"extends,attr"`
+	Bitpos    string `xml:"bitpos,attr"`
+	Dir       string `xml:"dir,attr"` // "-" for negative values
 }
 
 // ExtensionType is a type reference in an extension
@@ -401,7 +404,15 @@ func collectExtensionEnums(registry *Registry) map[string][]ExtensionEnumValue {
 					if err != nil {
 						continue
 					}
-					value = 1000000000 + int64(ext.Number-1)*1000 + int64(offset)
+					extNumber := ext.Number
+					if e.Extnumber != "" {
+						n, err := strconv.Atoi(e.Extnumber)
+						if err != nil {
+							continue
+						}
+						extNumber = n
+					}
+					value = 1000000000 + int64(extNumber-1)*1000 + int64(offset)
 					if e.Dir == "-" {
 						value = -value
 					}
@@ -546,7 +557,7 @@ func generateTypes(registry *Registry, outDir string) error {
 	fmt.Fprintln(f, "type PerformanceCounterResultKHR [8]byte // Union: int32, int64, uint32, uint64, float32, float64")
 	fmt.Fprintln(f, "type DeviceOrHostAddressKHR uintptr // Union: deviceAddress or hostAddress")
 	fmt.Fprintln(f, "type DeviceOrHostAddressConstKHR uintptr // Union: deviceAddress or hostAddress")
-	fmt.Fprintln(f, "type AccelerationStructureGeometryDataKHR [64]byte // Union: triangles, aabbs, instances")
+	fmt.Fprintln(f, "type AccelerationStructureGeometryDataKHR [8]uint64 // Union: triangles, aabbs, instances (8-byte aligned)")
 	fmt.Fprintln(f, "type AccelerationStructureMotionInstanceDataNV [144]byte // Union: static, matrix, srt instances")
 	fmt.Fprintln(f, "type ClusterAccelerationStructureOpInputNV uintptr // Union: various cluster inputs")
 	fmt.Fprintln(f, "type DescriptorDataEXT uintptr // Union: descriptor data variants")

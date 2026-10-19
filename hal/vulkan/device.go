@@ -8,12 +8,12 @@ package vulkan
 import (
 	"encoding/binary"
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 	"unsafe"
 
 	"github.com/gogpu/gputypes"
-	"github.com/gogpu/naga"
 	"github.com/gogpu/wgpu/hal"
 	"github.com/gogpu/wgpu/hal/vulkan/memory"
 	"github.com/gogpu/wgpu/hal/vulkan/vk"
@@ -78,6 +78,15 @@ type Device struct {
 	// VkPresentRegionsKHR into VkPresentInfoKHR.PNext to hint the
 	// compositor about which surface regions changed (damage rects).
 	supportsIncrementalPresent bool
+
+	// bufferDeviceAddress is true when the bufferDeviceAddress feature is
+	// enabled. Memory is then allocated with VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT
+	// and RT buffer usages map to SHADER_DEVICE_ADDRESS.
+	bufferDeviceAddress bool
+
+	// rayQuery is true when gputypes.FeatureRayQuery was enabled at device
+	// creation (VK_KHR_acceleration_structure + VK_KHR_ray_query).
+	rayQuery bool
 
 	// Timeline semaphore fence (VK-IMPL-001).
 	// When available (Vulkan 1.2+), replaces both frame fences and transfer fence
@@ -202,8 +211,11 @@ func (d *Device) initAllocator() error {
 	// Rust wgpu-hal stores this as non_coherent_map_mask = atomSize - 1 (adapter.rs:1921).
 	d.queryNonCoherentAtomSize()
 
-	// Create allocator with default config
-	allocator, err := memory.NewGpuAllocator(d.handle, d.cmds, props, maxAllocSize, memory.DefaultConfig())
+	// Create allocator with default config. Ray tracing needs device-address
+	// memory for AS storage, scratch and build-input buffers.
+	config := memory.DefaultConfig()
+	config.BufferDeviceAddress = d.bufferDeviceAddress
+	allocator, err := memory.NewGpuAllocator(d.handle, d.cmds, props, maxAllocSize, config)
 	if err != nil {
 		return fmt.Errorf("failed to create memory allocator: %w", err)
 	}
@@ -980,6 +992,12 @@ func (d *Device) CreateBindGroupLayout(desc *hal.BindGroupLayoutDescriptor) (hal
 		case entry.StorageTexture != nil:
 			binding.DescriptorType = vk.DescriptorTypeStorageImage
 			counts.StorageImages++
+		case entry.AccelerationStructure != nil:
+			if !d.rayQuery {
+				return nil, fmt.Errorf("vulkan: acceleration structure binding %d requires FeatureRayQuery", entry.Binding)
+			}
+			binding.DescriptorType = vk.DescriptorTypeAccelerationStructureKhr
+			counts.AccelerationStructures++
 		}
 
 		bindingTypes[entry.Binding] = binding.DescriptorType
@@ -1078,6 +1096,9 @@ func (d *Device) updateDescriptorSet(set vk.DescriptorSet, entries []gputypes.Bi
 	writes := make([]vk.WriteDescriptorSet, 0, len(entries))
 	bufferInfos := make([]vk.DescriptorBufferInfo, 0)
 	imageInfos := make([]vk.DescriptorImageInfo, 0)
+	// Sized up front so pointers into them stay valid while appending.
+	var asHandles []vk.AccelerationStructureKHR
+	var asWrites []vk.WriteDescriptorSetAccelerationStructureKHR
 
 	for _, entry := range entries {
 		write := vk.WriteDescriptorSet{
@@ -1120,9 +1141,35 @@ func (d *Device) updateDescriptorSet(set vk.DescriptorSet, entries []gputypes.Bi
 				ImageView:   vk.ImageView(res.TextureView),
 				ImageLayout: vk.ImageLayoutShaderReadOnlyOptimal,
 			}
-			imageInfos = append(imageInfos, imageInfo)
 			write.DescriptorType = vk.DescriptorTypeSampledImage
+			// Storage textures are bound as STORAGE_IMAGE in GENERAL layout,
+			// matching textureUsageToAccessStageLayout(TextureUsageStorageBinding).
+			if bindingTypes[entry.Binding] == vk.DescriptorTypeStorageImage {
+				write.DescriptorType = vk.DescriptorTypeStorageImage
+				imageInfo.ImageLayout = vk.ImageLayoutGeneral
+			}
+			imageInfos = append(imageInfos, imageInfo)
 			write.PImageInfo = &imageInfos[len(imageInfos)-1]
+
+		case gputypes.AccelerationStructureBinding:
+			// The AS handle goes in a VkWriteDescriptorSetAccelerationStructureKHR
+			// chained through pNext; descriptorCount must still match.
+			// Reference: Rust wgpu-hal device.rs create_bind_group.
+			if bindingTypes[entry.Binding] != vk.DescriptorTypeAccelerationStructureKhr {
+				return fmt.Errorf("binding %d: acceleration structure bound to a non-acceleration-structure layout entry", entry.Binding)
+			}
+			if asHandles == nil {
+				asHandles = make([]vk.AccelerationStructureKHR, 0, len(entries))
+				asWrites = make([]vk.WriteDescriptorSetAccelerationStructureKHR, 0, len(entries))
+			}
+			asHandles = append(asHandles, vk.AccelerationStructureKHR(res.AccelerationStructure))
+			asWrites = append(asWrites, vk.WriteDescriptorSetAccelerationStructureKHR{
+				SType:                      vk.StructureTypeWriteDescriptorSetAccelerationStructureKhr,
+				AccelerationStructureCount: 1,
+				PAccelerationStructures:    &asHandles[len(asHandles)-1],
+			})
+			write.DescriptorType = vk.DescriptorTypeAccelerationStructureKhr
+			write.PNext = (*uintptr)(unsafe.Pointer(&asWrites[len(asWrites)-1]))
 
 		default:
 			return fmt.Errorf("unsupported binding resource type: %T", entry.Resource)
@@ -1134,6 +1181,10 @@ func (d *Device) updateDescriptorSet(set vk.DescriptorSet, entries []gputypes.Bi
 	if len(writes) > 0 {
 		vkUpdateDescriptorSets(d.cmds, d.handle, uint32(len(writes)), &writes[0], 0, nil)
 	}
+	runtime.KeepAlive(bufferInfos)
+	runtime.KeepAlive(imageInfos)
+	runtime.KeepAlive(asHandles)
+	runtime.KeepAlive(asWrites)
 
 	return nil
 }
@@ -1240,7 +1291,7 @@ func (d *Device) CreateShaderModule(desc *hal.ShaderModuleDescriptor) (hal.Shade
 	// hardcoded SPIR-V from external tools can fail silently on Intel drivers.
 	switch {
 	case desc.Source.WGSL != "":
-		spirvBytes, err := naga.Compile(desc.Source.WGSL)
+		spirvBytes, err := compileWGSLToSPIRV(desc.Source.WGSL)
 		if err != nil {
 			return nil, fmt.Errorf("vulkan: naga WGSL compilation failed: %w", err)
 		}

@@ -209,12 +209,25 @@ func (i *Instance) EnumerateAdapters(surfaceHint hal.Surface) []hal.ExposedAdapt
 		// Extract device name
 		deviceName := cStringToGo(props.DeviceName[:])
 
+		extensions := enumerateDeviceExtensions(&i.cmds, device)
+		rtCaps := queryRayTracingCaps(&i.cmds, device, props.ApiVersion, extensions)
+
 		adapter := &Adapter{
 			instance:       i,
 			physicalDevice: device,
 			properties:     props,
 			features:       features,
+			extensions:     extensions,
+			rayTracing:     rtCaps,
 		}
+
+		limits := limitsFromProps(&props)
+		rtCaps.applyLimits(&limits)
+		alignments := hal.Alignments{
+			BufferCopyOffset: 4,
+			BufferCopyPitch:  256,
+		}
+		rtCaps.applyAlignments(&alignments)
 
 		adapterForExpose := hal.Adapter(adapter)
 		if surfaceHint != nil {
@@ -248,13 +261,10 @@ func (i *Instance) EnumerateAdapters(surfaceHint hal.Surface) []hal.ExposedAdapt
 					vkVersionPatch(props.ApiVersion)),
 				Backend: gputypes.BackendVulkan,
 			},
-			Features: featuresFromPhysicalDevice(&features, props.ApiVersion),
+			Features: featuresFromPhysicalDevice(&features, props.ApiVersion) | rtCaps.features(),
 			Capabilities: hal.Capabilities{
-				Limits: limitsFromProps(&props),
-				AlignmentsMask: hal.Alignments{
-					BufferCopyOffset: 4,
-					BufferCopyPitch:  256,
-				},
+				Limits:                limits,
+				AlignmentsMask:        alignments,
 				DownlevelCapabilities: downlevelCapabilitiesFromFeatures(&features),
 			},
 		})

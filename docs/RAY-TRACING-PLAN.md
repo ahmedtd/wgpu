@@ -7,7 +7,8 @@
 > `rust-wgpu/examples/features/src/ray_scene` run on the Vulkan backend and match
 > the Rust reference screenshots.
 > **Reference checkouts:** `../rust-wgpu` (commit `e084b66aa`), `../go-naga` (v0.20.3, `main`).
-> **Last updated:** 2026-10-18 (Phase 0 complete; Phase 1 done except the naga release + `go.mod` bump in 1.4)
+> **Last updated:** 2026-10-18 (Phases 0 and 2 complete; Phase 1 done except the naga release + `go.mod` bump in 1.4;
+> 3.1's gputypes change made early, unreleased)
 
 This document is the hand-off point between sessions. **Each session should pick
 the first unchecked task, do it, tick the box, and add a line to the
@@ -25,10 +26,10 @@ backend can't actually run any of it yet.
 
 | Layer | State | Notes |
 |---|---|---|
-| `gputypes` (v0.8.0, external module) | **Mostly done** | Has `CreateBlasDescriptor`, `CreateTlasDescriptor`, `BlasGeometrySizeDescriptors`, `Blas{Triangle,AABB}GeometrySizeDescriptor`, AS flags/geometry flags/update mode/copy mode, `BufferUsageBlasInput/TlasInput/AccelerationStructureScratch/...Query`, AS limits, `FeatureRayQuery`, `BindGroupLayoutEntry.AccelerationStructure`. **Missing:** a `BindingResource` for acceleration structures (the interface has an unexported marker method, so only gputypes can add one) and an equivalent of `Limits::using_minimum_supported_acceleration_structure_values()`. |
+| `gputypes` (v0.8.0, external module) | **Done on `../gputypes` `rt-work` (unreleased)**; the notes below describe v0.8.0 | Has `CreateBlasDescriptor`, `CreateTlasDescriptor`, `BlasGeometrySizeDescriptors`, `Blas{Triangle,AABB}GeometrySizeDescriptor`, AS flags/geometry flags/update mode/copy mode, `BufferUsageBlasInput/TlasInput/AccelerationStructureScratch/...Query`, AS limits, `FeatureRayQuery`, `BindGroupLayoutEntry.AccelerationStructure`. **Missing:** a `BindingResource` for acceleration structures (the interface has an unexported marker method, so only gputypes can add one) and an equivalent of `Limits::using_minimum_supported_acceleration_structure_values()`. |
 | `hal/raytracing.go`, `hal/api.go`, `hal/command.go` | **Done** | Device: Create/Destroy AS, GetBuildSizes, GetDeviceAddress, TlasInstanceToBytes. Encoder: BuildAccelerationStructures, PlaceAccelerationStructureBarrier, CopyAccelerationStructure, ReadAccelerationStructureCompactSize. Matches wgpu-hal. `hal.Alignments` has `RawTlasInstanceSize` and `RayTracingScratchBufferAlignment`. |
-| `hal/vulkan/raytracing.go` (839 LOC) | **Written, never run** | See the Vulkan blockers below. |
-| `hal/vulkan/vk` bindings | **Types and wrappers present, procs never loaded** | `vk.Commands.LoadDevice` (`hal/vulkan/vk/commands.go:143`) never calls `GetDeviceProcAddr` for any `*AccelerationStructure*KHR` function or `vkGetBufferDeviceAddress`. The wrappers nil-guard and **silently do nothing**. |
+| `hal/vulkan/raytracing.go` | **Works (Phase 2)** | `TestRayQuerySmoke` builds a BLAS + TLAS and traces rays from a compute shader on the RTX 5080 with validation layers clean. |
+| `hal/vulkan/vk` bindings | **Fixed in Phase 2** | Procs are loaded. Two binding bugs were also fixed: the AS geometry union had 1-byte alignment, and `vk-gen` ignored `extnumber` (so 55 constants, including `IndexTypeNoneKhr`, were wrong). |
 | `hal/software/raytracing.go` | CPU BVH only | The software *shader interpreter* doesn't support `ray_query`, so it can't run the example shaders. It's still useful for headless unit tests of build orchestration. |
 | `internal/raytracing/` | **Done, not wired up** | `Blas`/`Tlas` state structs, `BuildContext` (scratch sizing, built-index), compaction state machine, validation, and a `DeviceContext` interface. `core/ray_tracing.go` only has the `deviceRTContext` adapter, and nothing calls it. |
 | `core/` | **Missing** | No `core.Blas`/`core.Tlas` resources, no create/build/submit-time validation, no tracking. |
@@ -37,7 +38,7 @@ backend can't actually run any of it yet.
 | Browser backend | Not available | Not in the W3C spec. Stub the API with `ErrUnsupported`. |
 | go-naga (WGSL → SPIR-V) | **Works (rt-work branch, unreleased)** | `enable wgpu_ray_query`, `acceleration_structure`, `ray_query`, `RayDesc`, `rayQuery*` builtins and SPIR-V `ray_query.go` helpers all exist. The `CompactTypes` panic (§1.2) is fixed on `../go-naga` branch `rt-work`, and both example shaders compile and pass `spirv-val --target-env vulkan1.2` (see Phase 1). |
 
-### 1.1 Vulkan blockers (all confirmed by reading the code)
+### 1.1 Vulkan blockers (all confirmed by reading the code) — all FIXED in Phase 2
 
 1. **RT extensions and features are never enabled.** `hal/vulkan/adapter.go:open()` only enables
    `VK_KHR_swapchain` (and optionally `VK_KHR_incremental_present`). It needs
@@ -310,8 +311,10 @@ Gaps found while porting (not ray tracing specific; fix when convenient):
 - [ ] **0.6** The examples depend on `MappedAtCreation` writes through `MappedRange.BytesMut()` + `Unmap`
   working for `BLAS_INPUT`/`STORAGE`/`UNIFORM` buffers on Vulkan. That path hasn't been exercised by these
   examples yet. Check it during 2.8 or 3.8.
-- [ ] **0.7** `golangci-lint` isn't installed on the dev box (still true after Phase 1), so the new example code hasn't been linted. Run
-  `golangci-lint run ./examples/...` (with and without `--build-tags rtwip`).
+- [ ] **0.7** Lint the example code. `golangci-lint` **is** installed now (`~/go/bin`). Without `rtwip`,
+  `golangci-lint run ./examples/...` reports 6 issues in the RT example code (2 errcheck, 2 gocognit, 1 gosec in
+  `rtexample/headless.go:188`, 1 nestif in `ray-scene/obj.go`). These aren't fixed yet. The `rtwip` files can't be
+  linted until Phase 3 makes them compile.
 
 ### Phase 1 — go-naga fixes (in `../go-naga`, branch `rt-work`)
 
@@ -344,31 +347,59 @@ All go-naga changes are **uncommitted** in `../go-naga` on branch `rt-work`. `go
   committed. With it, `go build ./...`, `-tags rust`, and wasm all build, and `go test ./...` passes. Same result with
   `GOWORK=off`, so the v0.19.0 → v0.20.3 naga jump didn't regress anything. **Remaining:** commit and release the
   go-naga changes, then bump `github.com/gogpu/naga` in `go.mod` and drop `go.work`.
+  **Since Phase 2, `GOWORK=off` no longer builds.** `hal/vulkan/shader_compile.go` calls `naga.ProcessOverrides`
+  (not in v0.19.0), and `hal/vulkan/device.go` uses `gputypes.AccelerationStructureBinding` (not in v0.8.0).
+  `go.work` is now `use (. ../go-naga ../gputypes)`. Both modules need a release and a `go.mod` bump.
 - [ ] **1.5** (found in 1.3; optional, needed for Phase 5.5) Port the remaining upstream ray-query commits to go-naga:
   MSL `f6d9a1db` (intersection queries) and `a03be8d2` (safety), HLSL `c97fe3e7` (safety), and SPIR-V `7721a3e0`
   (`rayQueryTerminate`). The `rust_deviations_test.go` entries for `ray-query*` and the new example shaders will
   then start failing as "no longer a difference", which is the signal to delete them.
 
-### Phase 2 — Vulkan HAL enablement (`hal/vulkan`)
+### Phase 2 — Vulkan HAL enablement (`hal/vulkan`) — DONE 2026-10-18 (except 2.10)
 
-- [ ] **2.1** Load the RT and device-address procs in `vk.Commands.LoadDevice` (§1.1 item 3). Check every
-  `c.<rtProc>` field used in `commands_manual.go` and `commands_gen.go`.
-- [ ] **2.2** At adapter enumeration, detect the extensions and query
-  `PhysicalDeviceAccelerationStructureFeaturesKHR`, `PhysicalDeviceRayQueryFeaturesKHR`, the
-  `bufferDeviceAddress` feature, and `PhysicalDeviceAccelerationStructurePropertiesKHR`. Report `FeatureRayQuery`.
-  Fill the AS limits. Set `Alignments.RayTracingScratchBufferAlignment` and `RawTlasInstanceSize = 64`.
-  Rust: `adapter.rs` `PhysicalDeviceFeatures::to_wgpu`, `PhysicalDeviceProperties::to_wgpu_limits`.
-- [ ] **2.3** In `Adapter.open`, when `FeatureRayQuery` is requested, enable the four extensions and chain the feature
-  structs (extend the existing `vulkan12Enable` PNext chain). Stop ignoring the requested features in `Open`.
-- [ ] **2.4** Map the RT buffer usages in `bufferUsageToVk`. Allocate memory with `MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT`
-  when device address is enabled (§1.1 items 4 and 5).
-- [ ] **2.5** Add AS descriptors to the bind group layout, pool sizes, and `updateDescriptorSet` (§1.1 item 6). This needs the
-  gputypes change in 3.1 so the HAL can receive an AS binding.
-- [ ] **2.6** Fix the `BuildAccelerationStructures` slice desync and pointer lifetimes (§1.1 item 7).
-- [ ] **2.7** Add the Vulkan buffer barrier mapping for the `BufferUses` AS states
-  (`BOTTOM/TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT`, `ACCELERATION_STRUCTURE_SCRATCH`) in `core/track`
-  and `hal/vulkan` barrier conversion, if they're missing. Compare with Rust `conv.rs map_buffer_usage_to_barrier`.
-- [ ] **2.9** (found in Phase 1) **Shader compile options parity.** `hal/vulkan/device.go:1243` calls
+- [x] **2.1** Done. `LoadDevice` loads `vkGetBufferDeviceAddress` and the 7 `*AccelerationStructure*KHR` procs the
+  backend uses. `Commands.HasAccelerationStructure()` checks them, and `Adapter.open` fails if they're missing when
+  ray query is requested. Also fixed: `SigVoidHandleHandlePtrPtrPtr` (`vkGetAccelerationStructureBuildSizesKHR`)
+  declared the `buildType` enum as u64, so goffi read 8 bytes from a 4-byte value. It's u32 now.
+- [x] **2.2** Done in `hal/vulkan/raytracing_caps.go`. `FeatureRayQuery` is reported when the device is Vulkan 1.2+,
+  has `VK_KHR_{deferred_host_operations,acceleration_structure,ray_query}`, **and** reports the
+  `bufferDeviceAddress`/`accelerationStructure`/`rayQuery` feature bits. Rust only checks extensions. AS limits come
+  from `PhysicalDeviceAccelerationStructurePropertiesKHR`, as in Rust's `to_wgpu_limits`. `RawTlasInstanceSize = 64`
+  is set always, and the scratch alignment when supported. Device extensions are now enumerated once, at
+  enumeration, and stored on `Adapter.extensions`.
+- [x] **2.3** Done. `Open` passes the requested features through; it errors if ray query is requested but
+  unsupported. It enables the three extensions (BDA is core in 1.2, so its extension isn't needed) and chains
+  `Vulkan12{bufferDeviceAddress} → AccelerationStructure → RayQuery`. The bufferDeviceAddress bit goes in the
+  existing Vulkan12 struct because the spec forbids also chaining the standalone BDA struct.
+- [x] **2.4** Done. `bufferUsageToVk` matches Rust `map_buffer_usage`. `memory.AllocatorConfig.BufferDeviceAddress`
+  chains `VkMemoryAllocateFlagsInfo{DEVICE_ADDRESS}` into every `vkAllocateMemory` when ray query is enabled,
+  matching gpu-allocator.
+- [x] **2.5** Done, which required doing 3.1's gputypes part early (see 3.1). Layout entries map to
+  `ACCELERATION_STRUCTURE_KHR` (with an error if the device lacks ray query). `DescriptorCounts.AccelerationStructures`
+  adds an AS pool size only to pools created for AS layouts, as is done for dynamic buffers. `updateDescriptorSet`
+  chains `VkWriteDescriptorSetAccelerationStructureKHR`.
+  **Also fixed a non-RT bug found here:** `updateDescriptorSet` wrote every `TextureViewBinding` as
+  `SAMPLED_IMAGE`/`SHADER_READ_ONLY_OPTIMAL`, even for storage textures. It now uses `STORAGE_IMAGE`/`GENERAL`
+  when the layout says so. `ray-traced-triangle` writes to a storage texture, so it needs this.
+- [x] **2.6** Done. The `dstAS == nil` check now runs before the appends, and the build/size-query slices are
+  `runtime.KeepAlive`d past the FFI call.
+  **Also found and fixed:** `vk.AccelerationStructureGeometryDataKHR` was `[64]byte`, so it had 1-byte alignment.
+  That put `VkAccelerationStructureGeometryKHR.geometry` at offset 20 instead of 24, which would corrupt every
+  build. It's `[8]uint64` now, in both `cmd/vk-gen` and `types_gen.go`. `vk/layout_raytracing_test.go` pins the
+  C layout of all the RT structs. And `vk-gen` ignored `<enum extnumber=...>`, so `IndexTypeNoneKhr` was
+  1000150000 instead of 1000165000, which the validation layers rejected. Regenerating `const_gen.go` corrected 55
+  constants. `IndexTypeNoneKhr` is the only one the code uses. The generator otherwise reproduces the checked-in
+  files exactly.
+- [x] **2.7** Done. `core/track.BufferUses` has `BlasInput`/`TlasInput`/`AccelerationStructureScratch`/
+  `AccelerationStructureQuery`. Scratch and query are write (exclusive) states, as in Rust. `ToBufferUsage` maps
+  them. `bufferUsageToAccessAndStage` matches Rust `map_buffer_usage_to_barrier`. Nothing in core uses the new states
+  yet; that's 3.4. Also removed `RAY_TRACING_SHADER_BIT_KHR` from the AS `SHADER_INPUT` barrier, since it's invalid
+  without `VK_KHR_ray_tracing_pipeline`.
+- [x] **2.9** (found in Phase 1) **Done for the ray-query part.** `hal/vulkan/shader_compile.go` runs
+  Parse → LowerWithCapabilities → ProcessOverrides → `GenerateSPIRV` with `RayQueryInitTracking: true` and
+  `ForceLoopBounding: true`. Everything else is unchanged (SPIR-V 1.3, zero capabilities, no bounds checks).
+  compute-sum/copy/particles and triangle-headless still pass on Vulkan, and the three example shaders pass
+  `spirv-val`. The rest moved to 2.10. Original text: `hal/vulkan/device.go:1243` calls
   `naga.Compile`, which goes through `naga.CompileWithOptions`. That function builds a bare `spirv.Options` with only
   Version/Debug/BoundsCheckPolicies, so it **drops `RayQueryInitTracking`** (and `ForceLoopBounding` /
   `UseStorageInputOutput16`), even though `spirv.DefaultOptions()` sets them. Rust's Vulkan HAL
@@ -379,16 +410,27 @@ All go-naga changes are **uncommitted** in `../go-naga` on branch `rt-work`. `go
   Parse/Lower/Validate/ProcessOverrides/`GenerateSPIRV` with `spirv.DefaultOptions()` plus overrides. See 1.3's
   SPIR-V 1.5 caveat before raising the version. This isn't needed for the examples to render correctly; it's a
   safety/parity item.
-- [ ] **2.8** Add a HAL-level smoke test, gated on Vulkan + RT availability (skip otherwise). It should create a BLAS
+- [ ] **2.10** (split from 2.9) Remaining shader-option parity, which affects **all** shaders, not just RT:
+  Restrict bounds checks (Index always; Buffer/ImageLoad unless robustBufferAccess2/robustImageAccess), a SPIR-V
+  version from the device API version (see 1.3's 1.5+ caveat), and `UseStorageInputOutput16` gated on
+  `SHADER_F16` like Rust. go-naga emits the `RayQueryKHR` capability itself, so nothing is needed for it.
+- [x] **2.8** Done: `hal/vulkan/raytracing_integration_test.go` `TestRayQuerySmoke`. It enables validation layers and
+  fails on any validation error. It builds a one-triangle BLAS and a one-instance TLAS (shared scratch buffer, TLAS
+  region at the reported alignment), then runs a ray-query compute shader that writes kind, custom data, and t for 4
+  rays (2 hits, 2 misses). It passes on the RTX 5080, and skips when no adapter has `FeatureRayQuery`. It caught the
+  union alignment, `IndexTypeNoneKhr`, and (in the test itself) cleanup-order bugs. Original text: It should create a BLAS
   with one triangle, a TLAS with one instance, and run a compute shader with a ray query that writes hit/miss to a
   storage buffer, then read the result back. This exercises everything in Phase 2 before core exists.
   (The dev box has an RTX 5080 with `nvidia_icd.json`. lavapipe has no RT support.)
 
 ### Phase 3 — gputypes, core, and public API
 
-- [ ] **3.1** **gputypes** (external module `github.com/gogpu/gputypes`, no local checkout yet). Clone it next to the
-  other repos and add `AccelerationStructureBinding{AccelerationStructure uintptr}` implementing `BindingResource`.
-  Optionally add `Limits.UsingMinimumSupportedAccelerationStructureValues()`. Release it, or use a `go.work` during dev.
+- [ ] **3.1** **gputypes**: code done, release pending. `../gputypes` was cloned at v0.8.0 onto branch `rt-work`
+  (committed there, not pushed or released). It adds `AccelerationStructureBinding{AccelerationStructure uintptr}` (`BindingResource`, carrying
+  the HAL AS `NativeHandle()`), `Limits.UsingMinimumSupportedAccelerationStructureValues()`, and
+  `Limits.UsingAccelerationStructureValues(other)`, with tests. It's wired in through `go.work`.
+  **Remaining:** commit, release, and bump `go.mod`. `wgpu.LimitsWithMinimumAccelerationStructureValues` (§2) can
+  wrap the new method.
 - [ ] **3.2** **core resources:** add `core.Blas` and `core.Tlas` in `core/resource.go` (or a new
   `core/ray_tracing_resource.go`). Embed or own the `internal/raytracing.Blas/Tlas` state. Hold the HAL AS in a
   `Snatchable`, with `ResourceRef` refcounting like `core.Buffer`. `Tlas` owns its instance buffer.
@@ -467,3 +509,4 @@ All go-naga changes are **uncommitted** in `../go-naga` on branch `rt-work`. `go
 | 2026-10-18 | Research + this plan. Created branch `rt-work`. Found and root-caused the go-naga `CompactTypes` SpecialTypes remap bug (fix verified, then reverted; tracked as task 1.1). Found Vulkan RT blockers (§1.1). No code changes yet. |
 | 2026-10-18 | Phase 0 done: `examples/ray-traced-triangle`, `examples/ray-scene` (behind `rtwip`), shared `examples/internal/rtexample`. Examples type-check against a temporary §2 shim. Next: Phase 1 (go-naga). |
 | 2026-10-18 | Phase 1 (go-naga, uncommitted on `../go-naga` `rt-work`): fixed the `CompactTypes` SpecialTypes bug (1.1) and ported two SPIR-V ray-query fixes from upstream `55534165`. Added the example shaders to the own corpus with optional per-shader TOML and Rust-derived references; IR matches Rust exactly, and MSL/HLSL deviations are recorded (1.2). `spirv-val --target-env vulkan1.2` is clean at SPIR-V 1.3/1.4 (1.3). go-wgpu uses `go.work` → `../go-naga`, and builds and tests clean (1.4, pending naga release). New tasks: 1.5 (port remaining MSL/HLSL/terminate commits), 2.9 (Vulkan shader compile options parity, notably init tracking). Next: release naga + bump `go.mod`, then Phase 2. |
+| 2026-10-18 | Phase 2 (Vulkan HAL) done: RT procs loaded; `FeatureRayQuery`, limits, and alignments reported; extensions and the feature chain enabled on request; RT buffer usages and device-address memory; AS bind group descriptors; build-loop desync and lifetimes fixed; AS buffer barrier states; ray query init tracking. Bugs found and fixed: AS geometry union alignment, `vk-gen` `extnumber` (55 constants), build-sizes FFI signature, and storage-image descriptors written as sampled images. `TestRayQuerySmoke` passes on the RTX 5080 with validation clean. Did 3.1's gputypes code early (`../gputypes` `rt-work`, committed locally), so `GOWORK=off` builds are broken until the naga and gputypes releases. New task 2.10. Next: Phase 3 (3.2 core resources). |

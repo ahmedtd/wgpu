@@ -274,6 +274,19 @@ func (c *Commands) LoadDevice(device Device) error {
 	c.waitSemaphores = GetDeviceProcAddr(device, "vkWaitSemaphores")
 	c.signalSemaphore = GetDeviceProcAddr(device, "vkSignalSemaphore")
 
+	// Vulkan 1.2 core (promoted from VK_KHR_buffer_device_address).
+	c.getBufferDeviceAddress = GetDeviceProcAddr(device, "vkGetBufferDeviceAddress")
+
+	// VK_KHR_acceleration_structure. These are nil unless the extension was
+	// enabled at device creation; check HasAccelerationStructure before use.
+	c.createAccelerationStructureKHR = GetDeviceProcAddr(device, "vkCreateAccelerationStructureKHR")
+	c.destroyAccelerationStructureKHR = GetDeviceProcAddr(device, "vkDestroyAccelerationStructureKHR")
+	c.getAccelerationStructureBuildSizesKHR = GetDeviceProcAddr(device, "vkGetAccelerationStructureBuildSizesKHR")
+	c.getAccelerationStructureDeviceAddressKHR = GetDeviceProcAddr(device, "vkGetAccelerationStructureDeviceAddressKHR")
+	c.cmdBuildAccelerationStructuresKHR = GetDeviceProcAddr(device, "vkCmdBuildAccelerationStructuresKHR")
+	c.cmdCopyAccelerationStructureKHR = GetDeviceProcAddr(device, "vkCmdCopyAccelerationStructureKHR")
+	c.cmdWriteAccelerationStructuresPropertiesKHR = GetDeviceProcAddr(device, "vkCmdWriteAccelerationStructuresPropertiesKHR")
+
 	// Swapchain functions (WSI)
 	c.createSwapchainKHR = GetDeviceProcAddr(device, "vkCreateSwapchainKHR")
 	c.destroySwapchainKHR = GetDeviceProcAddr(device, "vkDestroySwapchainKHR")
@@ -295,6 +308,19 @@ func (c *Commands) HasTimelineSemaphore() bool {
 	return c.getSemaphoreCounterValue != nil &&
 		c.waitSemaphores != nil &&
 		c.signalSemaphore != nil
+}
+
+// HasAccelerationStructure returns true if every VK_KHR_acceleration_structure
+// function used by the backend, and vkGetBufferDeviceAddress, were loaded.
+func (c *Commands) HasAccelerationStructure() bool {
+	return c.getBufferDeviceAddress != nil &&
+		c.createAccelerationStructureKHR != nil &&
+		c.destroyAccelerationStructureKHR != nil &&
+		c.getAccelerationStructureBuildSizesKHR != nil &&
+		c.getAccelerationStructureDeviceAddressKHR != nil &&
+		c.cmdBuildAccelerationStructuresKHR != nil &&
+		c.cmdCopyAccelerationStructureKHR != nil &&
+		c.cmdWriteAccelerationStructuresPropertiesKHR != nil
 }
 
 // HasPhysicalDeviceFeatures2 returns true if vkGetPhysicalDeviceFeatures2 is available.
