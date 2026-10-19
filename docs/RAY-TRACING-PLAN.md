@@ -7,8 +7,8 @@
 > `rust-wgpu/examples/features/src/ray_scene` run on the Vulkan backend and match
 > the Rust reference screenshots.
 > **Reference checkouts:** `../rust-wgpu` (commit `e084b66aa`), `../go-naga` (v0.20.3, `main`).
-> **Last updated:** 2026-10-18 (Phases 0 and 2 complete; Phase 1 done except the naga release + `go.mod` bump in 1.4;
-> 3.1's gputypes change made early, unreleased)
+> **Last updated:** 2026-10-18 (Phases 0, 2 and 3 complete, except the naga and gputypes releases + `go.mod` bumps
+> in 1.4 and 3.1, and the new task 3.10 for the two remaining `ray-traced-triangle` validation errors)
 
 This document is the hand-off point between sessions. **Each session should pick
 the first unchecked task, do it, tick the box, and add a line to the
@@ -31,11 +31,11 @@ backend can't actually run any of it yet.
 | `hal/vulkan/raytracing.go` | **Works (Phase 2)** | `TestRayQuerySmoke` builds a BLAS + TLAS and traces rays from a compute shader on the RTX 5080 with validation layers clean. |
 | `hal/vulkan/vk` bindings | **Fixed in Phase 2** | Procs are loaded. Two binding bugs were also fixed: the AS geometry union had 1-byte alignment, and `vk-gen` ignored `extnumber` (so 55 constants, including `IndexTypeNoneKhr`, were wrong). |
 | `hal/software/raytracing.go` | CPU BVH only | The software *shader interpreter* doesn't support `ray_query`, so it can't run the example shaders. It's still useful for headless unit tests of build orchestration. |
-| `internal/raytracing/` | **Done, not wired up** | `Blas`/`Tlas` state structs, `BuildContext` (scratch sizing, built-index), compaction state machine, validation, and a `DeviceContext` interface. `core/ray_tracing.go` only has the `deviceRTContext` adapter, and nothing calls it. |
-| `core/` | **Missing** | No `core.Blas`/`core.Tlas` resources, no create/build/submit-time validation, no tracking. |
-| `wgpu` (public API) | **Missing** | No `Blas`, `Tlas`, `TlasInstance`, `Device.CreateBlas/CreateTlas`, `CommandEncoder.BuildAccelerationStructures`, `BindGroupEntry` AS resource, or `Queue.CompactBlas`. |
-| Rust FFI backend (`-tags rust`) | Not available | `go-webgpu/webgpu` v0.5.5 has no RT bindings. Stub the API with `ErrUnsupported`. |
-| Browser backend | Not available | Not in the W3C spec. Stub the API with `ErrUnsupported`. |
+| `internal/raytracing/` | **Partly used (Phase 3)** | `core` embeds the `Blas`/`Tlas` state structs and uses `CompactionState`. `BuildContext` and the `Validate*` helpers are **not** used, because their semantics differ from Rust (built index assigned at encode time, `MaxInstances > 0`, a `PreferUpdate` check). The core port in `core/ray_tracing_*.go` follows wgpu-core directly. |
+| `core/` | **Done (Phase 3)** | `core.Blas`/`core.Tlas` (`ray_tracing_resource.go`), create validation, `BuildAccelerationStructures` (`ray_tracing_build.go`), submit-time `ValidateAccelerationStructureActions` (`ray_tracing_submit.go`), errors (`ray_tracing_error.go`). No compaction yet (5.1). |
+| `wgpu` (public API) | **Done (Phase 3), no compaction** | `Blas`, `Tlas` (instance slots), `TlasInstance`, `Device.CreateBlas/CreateTlas`, `CommandEncoder.BuildAccelerationStructures`, `BindGroupEntry.AccelerationStructure`. `Queue.CompactBlas` is still missing (5.1). |
+| Rust FFI backend (`-tags rust`) | Stubbed | `go-webgpu/webgpu` v0.5.5 has no RT bindings. `raytracing_stub.go` returns `ErrUnsupported`, and AS bind group entries are rejected. |
+| Browser backend | Stubbed | Not in the W3C spec. Same stub as the Rust FFI backend. |
 | go-naga (WGSL → SPIR-V) | **Works (rt-work branch, unreleased)** | `enable wgpu_ray_query`, `acceleration_structure`, `ray_query`, `RayDesc`, `rayQuery*` builtins and SPIR-V `ray_query.go` helpers all exist. The `CompactTypes` panic (§1.2) is fixed on `../go-naga` branch `rt-work`, and both example shaders compile and pass `spirv-val --target-env vulkan1.2` (see Phase 1). |
 
 ### 1.1 Vulkan blockers (all confirmed by reading the code) — all FIXED in Phase 2
@@ -308,13 +308,17 @@ Gaps found while porting (not ray tracing specific; fix when convenient):
 - [ ] **0.5** `wgpu.Texture` has no `Width()`/`Height()`/`Size()`, but Rust's `Texture::width()` exists.
   `ray-traced-triangle` keeps the dispatch size in the `Example` struct instead. If you add them, switch the
   dispatch back to `storageTexture.Width()/8`.
-- [ ] **0.6** The examples depend on `MappedAtCreation` writes through `MappedRange.BytesMut()` + `Unmap`
+- [x] **0.6** The examples depend on `MappedAtCreation` writes through `MappedRange.BytesMut()` + `Unmap`
   working for `BLAS_INPUT`/`STORAGE`/`UNIFORM` buffers on Vulkan. That path hasn't been exercised by these
-  examples yet. Check it during 2.8 or 3.8.
-- [ ] **0.7** Lint the example code. `golangci-lint` **is** installed now (`~/go/bin`). Without `rtwip`,
+  examples yet. Check it during 2.8 or 3.8. **Verified in 3.8:** `rtexample`'s upload helper uses this path for every
+  example buffer, and both examples match their golden images on Vulkan.
+- [x] **0.7** Lint the example code. `golangci-lint` **is** installed now (`~/go/bin`). Without `rtwip`,
   `golangci-lint run ./examples/...` reports 6 issues in the RT example code (2 errcheck, 2 gocognit, 1 gosec in
   `rtexample/headless.go:188`, 1 nestif in `ray-scene/obj.go`). These aren't fixed yet. The `rtwip` files can't be
-  linted until Phase 3 makes them compile.
+  linted until Phase 3 makes them compile. **Done in Phase 3:** `golangci-lint run` reports 0 issues (default and
+  `rust` tags). `Close` errors are now ignored explicitly, `ray-scene` uses a checked `u32` helper for index ranges, and
+  the long sequential functions (`initExample`, `loadObj`, `loadModel`) carry reasoned `//nolint` directives like
+  `cmd/wgpu-triangle-mt`.
 
 ### Phase 1 — go-naga fixes (in `../go-naga`, branch `rt-work`)
 
@@ -429,30 +433,69 @@ All go-naga changes are **uncommitted** in `../go-naga` on branch `rt-work`. `go
   (committed there, not pushed or released). It adds `AccelerationStructureBinding{AccelerationStructure uintptr}` (`BindingResource`, carrying
   the HAL AS `NativeHandle()`), `Limits.UsingMinimumSupportedAccelerationStructureValues()`, and
   `Limits.UsingAccelerationStructureValues(other)`, with tests. It's wired in through `go.work`.
-  **Remaining:** commit, release, and bump `go.mod`. `wgpu.LimitsWithMinimumAccelerationStructureValues` (§2) can
-  wrap the new method.
-- [ ] **3.2** **core resources:** add `core.Blas` and `core.Tlas` in `core/resource.go` (or a new
+  **Remaining:** commit, release, and bump `go.mod`. `wgpu.LimitsWithMinimumAccelerationStructureValues` (§2) now
+  wraps the new method (`types.go`).
+- [x] **3.2** **core resources:** add `core.Blas` and `core.Tlas` in `core/resource.go` (or a new
   `core/ray_tracing_resource.go`). Embed or own the `internal/raytracing.Blas/Tlas` state. Hold the HAL AS in a
   `Snatchable`, with `ResourceRef` refcounting like `core.Buffer`. `Tlas` owns its instance buffer.
   Register them with the destroy queue so they're freed after GPU completion.
-- [ ] **3.3** **core create:** add `Device.CreateBlas` and `Device.CreateTlas`, porting
+  **Done:** `core/ray_tracing_resource.go`. A `Tlas` holds refs on the BLASes of its last submitted build (Rust
+  `Tlas::dependencies`). The public `Tlas` also holds a ref per instance slot, as a Rust `TlasInstance` holds an
+  `Arc<Blas>`. Bind groups hold refs on their bound TLASes.
+- [x] **3.3** **core create:** add `Device.CreateBlas` and `Device.CreateTlas`, porting
   `wgpu-core/src/device/ray_tracing.rs` (validation, size query, raw create, device address handle, instance
   buffer). Errors go in `core/error.go` as `CreateBlasError` and `CreateTlasError`, mirroring `wgpu-core/src/ray_tracing.rs`.
-- [ ] **3.4** **core build:** add `CommandEncoder.BuildAccelerationStructures`, porting `build_acceleration_structures`
+  **Done:** errors live in `core/ray_tracing_error.go` instead. Vulkan HAL fix: the size query took the device address
+  of a nil transform buffer (`UseTransform` BLAS created before its buffers exist). It now passes a non-null sentinel,
+  because Vulkan only checks the transform address for null in size queries.
+- [x] **3.4** **core build:** add `CommandEncoder.BuildAccelerationStructures`, porting `build_acceleration_structures`
   and `iter_blas` (§1.3) on top of `internal/raytracing.BuildContext`. The scratch buffer needs usage
   `AccelerationStructureScratch`. Stage instance bytes through the existing staging belt or pending-writes mechanism
   (`staging_belt.go`, `pending_writes.go`). Push the temp buffers so they're released after the submission completes.
   Record the AS actions on the encoder.
-- [ ] **3.5** **bind groups:** add `BindGroupEntry.AccelerationStructure`. In `toHAL`, emit the gputypes AS binding.
+  **Done:** `core/ray_tracing_build.go`, a direct port of wgpu-core (scratch = max(BLAS, TLAS) totals with
+  per-region alignment, instance staging buffer + copy into each TLAS's instance buffer, the full barrier sequence).
+  The staging buffer is a dedicated `MapWrite|CopySrc` buffer rather than the staging belt. Temp buffers are destroyed
+  after the submission completes (`queue_native.go` postSubmit), or immediately on discard/`Finish` error.
+  Vulkan HAL fix: scratch buffers are now allocated with `minAccelerationStructureScratchOffsetAlignment` (Rust parity).
+- [x] **3.5** **bind groups:** add `BindGroupEntry.AccelerationStructure`. In `toHAL`, emit the gputypes AS binding.
   Check the layout entry type and the `FeatureRayQuery` gate. Record `UseTlas` on any encoder that binds the group,
   or keep the TLAS list on the bind group and collect it at submit. Track the TLAS ref for lifetime.
-- [ ] **3.6** **submit-time validation:** in `queue_native.go` Submit, port `validate_acceleration_structure_actions`
+  **Done:** `SetBindGroup` records a `UseTlas` action per bound TLAS (`trackBindGroup`). Vulkan HAL fix: descriptor
+  set allocation now skips pools that lack a layout's optional descriptor types (AS, dynamic buffers). NVIDIA used to
+  allocate AS sets from a pool without them, which validation flagged.
+- [x] **3.6** **submit-time validation:** in `queue_native.go` Submit, port `validate_acceleration_structure_actions`
   (built_index assignment, unbuilt/newer-BLAS errors, compaction-state reset).
-- [ ] **3.7** **public wrappers:** add `blas.go`, `tlas.go`, `*_native.go` methods, plus `_rust.go` and `_browser.go`
+  **Done:** `core/ray_tracing_submit.go`, called before the pending-write flush, so a failed validation leaves the
+  queue untouched.
+- [x] **3.7** **public wrappers:** add `blas.go`, `tlas.go`, `*_native.go` methods, plus `_rust.go` and `_browser.go`
   stubs returning `ErrUnsupported`, so that all three build configurations compile:
   `go build ./...`, `go build -tags rust ./...`, `GOOS=js GOARCH=wasm go build .`.
-- [ ] **3.8** Remove any `rtwip` tag from the examples. `ray-traced-triangle` should match its golden image on Vulkan.
-- [ ] **3.9** Get `ray-scene` matching its golden image on Vulkan (it needs multiple BLASes, multi-geometry BLASes, and a per-frame TLAS rebuild).
+  **Done:** `raytracing.go` (shared types), `raytracing_native.go`, `raytracing_stub.go` (`rust || (js && wasm)`),
+  plus `ErrUnsupported` in each `error*.go`. All three builds pass. Headless tests on the software HAL
+  (`raytracing_native_test.go`) cover create/build validation, submit-time validation, build indices, TLAS/BLAS
+  lifetimes, temp-buffer cleanup on discard, and bind group layout mismatch.
+- [x] **3.8** Remove any `rtwip` tag from the examples. `ray-traced-triangle` should match its golden image on Vulkan.
+  **Done, with 2 validation errors left:** the tag and `stub.go` files are gone. The image matches (mean diff 0.000000
+  on the RTX 5080), but validation reports 2 image layout errors for the storage texture that the compute pass writes
+  and the render pass samples (see 3.10). `rtexample` now installs a logger when `GOGPU_DEBUG` is set (the HAL logger
+  is a no-op by default, so validation messages were silently dropped), and `CheckValidation` makes the run fail if any
+  validation error was logged.
+- [x] **3.9** Get `ray-scene` matching its golden image on Vulkan (it needs multiple BLASes, multi-geometry BLASes, and a per-frame TLAS rebuild).
+  **Done:** mean diff 0.000125, validation clean.
+- [ ] **3.10** **Bind-group texture/buffer usage tracking inside passes** (not RT-specific, but it blocks a clean
+  `ray-traced-triangle` run). Resources bound via bind groups are not usage-tracked in compute or render passes, so
+  nothing transitions the storage texture from `GENERAL` (compute write) to `SHADER_READ_ONLY_OPTIMAL` (fragment
+  sample). The result is `VUID-vkCmdDraw-imageLayout-00344` and `VUID-vkCmdDraw-None-09600`. Rust merges bind group
+  usages into the pass scope: compute passes emit barriers inline per dispatch, and render passes need a transit
+  command buffer before the pass (the unused multi-CB `OpenPass`/`CloseAndSwap` machinery; see the "Known gap" comment
+  in `EndRenderPass`). This is a cross-backend core encoder change.
+- [ ] **3.11** Deferred Phase 3 gaps (each mirrors a Rust check or feature that isn't ported yet):
+  buffer init tracking for BLAS/TLAS input buffers; same-device checks for AS resources and buffers;
+  TLAS uses inside render bundles (bundles don't call `trackBindGroup`, so no `UseTlas` action is recorded);
+  the `MaxAccelerationStructuresPerShaderStage` limit at bind group layout creation; a `FeatureRayQuery` check at
+  bind group layout creation in core (today only the Vulkan HAL rejects it); and the compaction-size queries at
+  build time (with 5.1).
 
 ### Phase 4 — Validation and test parity
 
@@ -510,3 +553,4 @@ All go-naga changes are **uncommitted** in `../go-naga` on branch `rt-work`. `go
 | 2026-10-18 | Phase 0 done: `examples/ray-traced-triangle`, `examples/ray-scene` (behind `rtwip`), shared `examples/internal/rtexample`. Examples type-check against a temporary §2 shim. Next: Phase 1 (go-naga). |
 | 2026-10-18 | Phase 1 (go-naga, uncommitted on `../go-naga` `rt-work`): fixed the `CompactTypes` SpecialTypes bug (1.1) and ported two SPIR-V ray-query fixes from upstream `55534165`. Added the example shaders to the own corpus with optional per-shader TOML and Rust-derived references; IR matches Rust exactly, and MSL/HLSL deviations are recorded (1.2). `spirv-val --target-env vulkan1.2` is clean at SPIR-V 1.3/1.4 (1.3). go-wgpu uses `go.work` → `../go-naga`, and builds and tests clean (1.4, pending naga release). New tasks: 1.5 (port remaining MSL/HLSL/terminate commits), 2.9 (Vulkan shader compile options parity, notably init tracking). Next: release naga + bump `go.mod`, then Phase 2. |
 | 2026-10-18 | Phase 2 (Vulkan HAL) done: RT procs loaded; `FeatureRayQuery`, limits, and alignments reported; extensions and the feature chain enabled on request; RT buffer usages and device-address memory; AS bind group descriptors; build-loop desync and lifetimes fixed; AS buffer barrier states; ray query init tracking. Bugs found and fixed: AS geometry union alignment, `vk-gen` `extnumber` (55 constants), build-sizes FFI signature, and storage-image descriptors written as sampled images. `TestRayQuerySmoke` passes on the RTX 5080 with validation clean. Did 3.1's gputypes code early (`../gputypes` `rt-work`, committed locally), so `GOWORK=off` builds are broken until the naga and gputypes releases. New task 2.10. Next: Phase 3 (3.2 core resources). |
+| 2026-10-18 | Phase 3 done (3.2–3.9, plus 0.6 and 0.7). Ported wgpu-core's create/build/submit RT paths into `core/ray_tracing_*.go` (not `internal/raytracing.BuildContext`, whose semantics differ). Added the public API in `raytracing*.go` with Rust FFI and browser stubs, the bind group AS entry, and headless tests on the software HAL. Vulkan HAL fixes: scratch alignment, size-query nil transform, descriptor pool selection by optional types. Both examples build without `rtwip`. `ray-scene` matches its golden image with validation clean. `ray-traced-triangle` matches too, but has 2 layout validation errors from untracked bind-group textures in passes (new task 3.10). Deferred checks recorded as 3.11. `go test ./...` and `golangci-lint` are clean. Next: 3.10, then Phase 4. |

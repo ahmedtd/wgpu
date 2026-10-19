@@ -11,14 +11,16 @@ The Rust example opens a window. This port renders one frame headlessly at
 compares it to `screenshot.png`, the Rust reference image, using a mean
 difference threshold of 0.02.
 
-**Status:** this example is written against the public ray tracing API
-planned in [`docs/RAY-TRACING-PLAN.md`](../../docs/RAY-TRACING-PLAN.md), which
-doesn't exist yet. Until it does, the example only builds with `-tags rtwip`.
-Without the tag you get a stub that prints a message and exits.
+**Status:** matches `screenshot.png` exactly on Vulkan (RTX 5080). It needs an
+adapter with `FeatureRayQuery`; the Rust FFI and browser backends return
+`ErrUnsupported`. With `GOGPU_DEBUG=1`, validation messages are printed and
+fail the run. Two known layout errors remain, because storage textures bound in
+passes are not usage-tracked yet (plan task 3.10).
 
 ```bash
-GOGPU_GRAPHICS_API=vulkan go run -tags rtwip ./examples/ray-traced-triangle -o out.png
-# GOGPU_DEBUG=1 enables validation layers; -threshold -1 skips the comparison.
+GOGPU_GRAPHICS_API=vulkan go run ./examples/ray-traced-triangle -o out.png
+# GOGPU_DEBUG=1 enables validation layers and fails on validation errors;
+# -threshold -1 skips the comparison.
 ```
 
 `shader.wgsl`, `blit.wgsl` and `screenshot.png` are copied unchanged from

@@ -76,6 +76,10 @@ func bindGroupLayoutEntriesEqual(a, b *gputypes.BindGroupLayoutEntry) bool {
 	if !optionalEqual(a.StorageTexture, b.StorageTexture) {
 		return false
 	}
+	// Compare AccelerationStructure pointer fields by value.
+	if !optionalEqual(a.AccelerationStructure, b.AccelerationStructure) {
+		return false
+	}
 	return true
 }
 
@@ -196,6 +200,11 @@ type BindGroup struct {
 	// boundTextures holds references to textures bound in this bind group (VAL-A6).
 	// Used at Submit time to verify that referenced textures are still alive.
 	boundTextures []*Texture
+	// boundTlases holds the acceleration structures bound in this bind group.
+	// Each holds a Ref clone owned by the bind group, dropped when the HAL bind
+	// group is destroyed. Setting the bind group records a TLAS use on the
+	// encoder for submit-time validation (Rust AsAction::UseTlas).
+	boundTlases []*core.Tlas
 }
 
 // Release marks the bind group for destruction. Drops the application's

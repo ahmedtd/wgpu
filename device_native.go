@@ -388,6 +388,10 @@ func (d *Device) CreateBindGroup(desc *BindGroupDescriptor) (*BindGroup, error) 
 		}
 	}
 
+	if err := validateBindGroupAccelerationStructures(desc, d.core.Features); err != nil {
+		return nil, err
+	}
+
 	halEntries := make([]gputypes.BindGroupEntry, len(desc.Entries))
 	for i, entry := range desc.Entries {
 		if entry.TextureView != nil && entry.TextureView.resolveHAL() == nil {
@@ -423,6 +427,13 @@ func (d *Device) CreateBindGroup(desc *BindGroupDescriptor) (*BindGroup, error) 
 	// Collect buffer and texture references for submit-time validation (VAL-A6).
 	boundBuffers, boundTextures := collectBindGroupResources(desc.Entries)
 
+	// The bind group keeps its acceleration structures alive, like Rust's
+	// BindGroup holding Arc<Tlas>.
+	boundTlases := collectBindGroupTlases(desc.Entries)
+	for _, tlas := range boundTlases {
+		tlas.Ref.Clone()
+	}
+
 	// Initialize ResourceRef with onZero callback for refcount-driven destruction.
 	// When the last reference drops (either from explicit Release or Phase 2
 	// Triage after GPU completion), onZero fires and defers HAL destruction via
@@ -434,9 +445,11 @@ func (d *Device) CreateBindGroup(desc *BindGroupDescriptor) (*BindGroup, error) 
 			subIdx := d.lastSubmissionIndex()
 			dq.Defer(subIdx, "BindGroup", func() {
 				halDevice.DestroyBindGroup(halBG)
+				dropTlasRefs(boundTlases)
 			})
 		} else {
 			halDevice.DestroyBindGroup(halBG)
+			dropTlasRefs(boundTlases)
 		}
 	}
 
@@ -449,6 +462,7 @@ func (d *Device) CreateBindGroup(desc *BindGroupDescriptor) (*BindGroup, error) 
 		ref:                    core.NewResourceRef("BindGroup:"+desc.Label, bgOnZero),
 		boundBuffers:           boundBuffers,
 		boundTextures:          boundTextures,
+		boundTlases:            boundTlases,
 	}
 
 	// Safety net: if the bind group is garbage collected without Release(),
@@ -537,6 +551,58 @@ func collectBindGroupResources(entries []BindGroupEntry) ([]*Buffer, []*Texture)
 		}
 	}
 	return buffers, textures
+}
+
+// collectBindGroupTlases returns the core TLASes bound by entries.
+func collectBindGroupTlases(entries []BindGroupEntry) []*core.Tlas {
+	var tlases []*core.Tlas
+	for i := range entries {
+		if tlas := entries[i].AccelerationStructure; tlas != nil {
+			tlases = append(tlases, tlas.core)
+		}
+	}
+	return tlases
+}
+
+func dropTlasRefs(tlases []*core.Tlas) {
+	for _, tlas := range tlases {
+		tlas.Ref.Drop()
+	}
+}
+
+// validateBindGroupAccelerationStructures checks acceleration structure
+// entries against their layout entries and the device features.
+//
+// Reference: wgpu-core device/resource.rs create_bind_group
+// (BindingResource::AccelerationStructure → WrongBindingType).
+func validateBindGroupAccelerationStructures(desc *BindGroupDescriptor, features gputypes.Features) error {
+	layoutByBinding := make(map[uint32]*gputypes.BindGroupLayoutEntry, len(desc.Layout.entries))
+	for i := range desc.Layout.entries {
+		layoutByBinding[desc.Layout.entries[i].Binding] = &desc.Layout.entries[i]
+	}
+	for i := range desc.Entries {
+		entry := &desc.Entries[i]
+		layoutEntry, ok := layoutByBinding[entry.Binding]
+		if !ok {
+			continue // reported by core.ValidateBindGroupDescriptor
+		}
+		if tlasLayoutMismatch(entry, layoutEntry) {
+			return fmt.Errorf("wgpu: bind group %q binding %d: acceleration structure binding does not match the layout entry type",
+				desc.Label, entry.Binding)
+		}
+		tlas := entry.AccelerationStructure
+		if tlas == nil {
+			continue
+		}
+		if !features.Contains(gputypes.FeatureRayQuery) {
+			return fmt.Errorf("wgpu: bind group %q binding %d: %w", desc.Label, entry.Binding,
+				core.NewFeatureError("acceleration structure binding", "FeatureRayQuery"))
+		}
+		if tlas.released == nil || tlas.released.Load() || tlas.halAccelerationStructure() == nil {
+			return fmt.Errorf("wgpu: bind group %q binding %d: TLAS is released: %w", desc.Label, entry.Binding, ErrReleased)
+		}
+	}
+	return nil
 }
 
 // buildBindGroupEntryMap builds a lookup map from binding index to BindGroupEntry

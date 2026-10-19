@@ -8,17 +8,50 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image"
+	"log/slog"
 	"math"
 	"os"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
 )
 
+// validationErrors counts backend validation errors logged since InitDevice.
+var validationErrors atomic.Int64
+
+// validationHandler prints wgpu warnings and errors to stderr and counts
+// validation-layer errors (logged at Error level with a "vulkan: " prefix).
+type validationHandler struct {
+	slog.Handler
+}
+
+func (h validationHandler) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= slog.LevelWarn
+}
+
+func (h validationHandler) Handle(ctx context.Context, rec slog.Record) error { //nolint:gocritic // signature fixed by slog.Handler
+	if rec.Level >= slog.LevelError && strings.HasPrefix(rec.Message, "vulkan: ") {
+		validationErrors.Add(1)
+	}
+	return h.Handler.Handle(ctx, rec)
+}
+
+// CheckValidation returns an error if any validation errors were logged
+// since InitDevice. It always succeeds when GOGPU_DEBUG is unset.
+func CheckValidation() error {
+	if n := validationErrors.Load(); n > 0 {
+		return fmt.Errorf("%d validation error(s) logged", n)
+	}
+	return nil
+}
+
 // InitDevice creates an instance, adapter and device with the given required
 // features and limits. GOGPU_GRAPHICS_API selects the backend, as in the
-// other examples. If GOGPU_DEBUG is set, validation layers are requested.
+// other examples. If GOGPU_DEBUG is set, validation layers are requested,
+// their messages are printed to stderr, and CheckValidation reports errors.
 //
 // It fails with a descriptive error if the adapter does not support every
 // required feature, mirroring the Rust example framework's adapter filter.
@@ -37,6 +70,7 @@ func InitDevice(features gputypes.Features, limits gputypes.Limits) (*wgpu.Devic
 	var flags gputypes.InstanceFlags
 	if os.Getenv("GOGPU_DEBUG") != "" {
 		flags |= gputypes.InstanceFlagsDebug
+		wgpu.SetLogger(slog.New(validationHandler{slog.NewTextHandler(os.Stderr, nil)}))
 	}
 
 	instance, err := wgpu.CreateInstance(&wgpu.InstanceDescriptor{Backends: backends, Flags: flags})
@@ -185,7 +219,7 @@ func alignUp(n, a uint32) uint32 { return (n + a - 1) / a * a }
 // it creates a buffer mapped at creation, copies contents in, and unmaps it.
 // Like Rust, it pads the size up to a multiple of 4 (COPY_BUFFER_ALIGNMENT).
 func CreateBufferInit(device *wgpu.Device, label string, contents []byte, usage gputypes.BufferUsage) (*wgpu.Buffer, error) {
-	size := uint64(alignUp(uint32(len(contents)), 4))
+	size := uint64(alignUp(uint32(len(contents)), 4)) //nolint:gosec // example buffers are far below 4 GiB
 	buf, err := device.CreateBuffer(&wgpu.BufferDescriptor{
 		Label:            label,
 		Size:             size,

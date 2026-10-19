@@ -192,6 +192,7 @@ func (a *Adapter) open(requestedFeatures gputypes.Features, requestedQueueFamily
 			return hal.OpenDevice{}, fmt.Errorf("vulkan: failed to load VK_KHR_acceleration_structure functions")
 		}
 		dev.rayQuery = true
+		dev.scratchBufferAlignment = a.rayTracing.asProperties.MinAccelerationStructureScratchOffsetAlignment
 	}
 
 	// Initialize synchronization fence (VK-IMPL-001 / VK-IMPL-003).

@@ -70,6 +70,20 @@ type DescriptorPool struct {
 	handle        vk.DescriptorPool
 	maxSets       uint32
 	allocatedSets uint32
+	// optional records which of the descriptor types that not every pool
+	// has (dynamic buffers, acceleration structures) this pool was created
+	// with; only non-zero means present.
+	optional DescriptorCounts
+}
+
+// supports reports whether the pool has pool sizes for every optional
+// descriptor type counts needs. Allocating a set with a type the pool lacks
+// must fail with VK_ERROR_OUT_OF_POOL_MEMORY, but with VK_KHR_maintenance1
+// some drivers (NVIDIA) succeed anyway, which the validation layers flag.
+func (p *DescriptorPool) supports(counts DescriptorCounts) bool {
+	return (counts.UniformBuffersDynamic == 0 || p.optional.UniformBuffersDynamic > 0) &&
+		(counts.StorageBuffersDynamic == 0 || p.optional.StorageBuffersDynamic > 0) &&
+		(counts.AccelerationStructures == 0 || p.optional.AccelerationStructures > 0)
 }
 
 // DescriptorAllocator manages descriptor pool allocation.
@@ -145,7 +159,7 @@ func (a *DescriptorAllocator) Allocate(layout vk.DescriptorSetLayout, counts Des
 
 	// Try to allocate from existing pools
 	for _, pool := range a.pools {
-		if pool.allocatedSets >= pool.maxSets {
+		if pool.allocatedSets >= pool.maxSets || !pool.supports(counts) {
 			continue
 		}
 
@@ -279,6 +293,11 @@ func (a *DescriptorAllocator) createPool(counts DescriptorCounts) (*DescriptorPo
 		handle:        pool,
 		maxSets:       poolSize,
 		allocatedSets: 0,
+		optional: DescriptorCounts{
+			UniformBuffersDynamic:  counts.UniformBuffersDynamic,
+			StorageBuffersDynamic:  counts.StorageBuffersDynamic,
+			AccelerationStructures: counts.AccelerationStructures,
+		},
 	}
 	a.setObjectName(vk.ObjectTypeDescriptorPool, uint64(pool),
 		fmt.Sprintf("DescriptorPool(%d)", len(a.pools)))

@@ -1,8 +1,6 @@
 // Copyright 2026 The GoGPU Authors
 // SPDX-License-Identifier: MIT
 
-//go:build rtwip
-
 // Command ray-traced-triangle is a port of Rust wgpu's
 // examples/features/src/ray_traced_triangle.
 //
@@ -13,13 +11,12 @@
 // headlessly (like the Rust example's test mode) at 1024x768, writes a PNG,
 // and compares it against the Rust reference screenshot.
 //
-// The build tag rtwip is temporary: this example is written against the
-// public ray tracing API planned in docs/RAY-TRACING-PLAN.md, which does not
-// exist yet. Remove the tag in plan task 3.8.
+// It needs an adapter with FeatureRayQuery (Vulkan only for now; see
+// docs/RAY-TRACING.md).
 //
 // Usage:
 //
-//	GOGPU_GRAPHICS_API=vulkan go run -tags rtwip ./examples/ray-traced-triangle [-o out.png]
+//	GOGPU_GRAPHICS_API=vulkan go run ./examples/ray-traced-triangle [-o out.png]
 package main
 
 import (
@@ -124,13 +121,16 @@ func run(out string, threshold float64) error {
 	if err := rtexample.WritePNG(out, img); err != nil {
 		return err
 	}
+	if err := rtexample.CheckValidation(); err != nil {
+		return err
+	}
 	if threshold >= 0 {
 		return rtexample.ComparePNG(img, goldenPNG, threshold)
 	}
 	return nil
 }
 
-func initExample(config *rtexample.Target, device *wgpu.Device, queue *wgpu.Queue) (*Example, error) {
+func initExample(config *rtexample.Target, device *wgpu.Device, queue *wgpu.Queue) (*Example, error) { //nolint:gocyclo,cyclop,funlen,maintidx // example code — intentionally sequential
 	ex := &Example{}
 	keep := func(r interface{ Release() }) { ex.release = append(ex.release, r) }
 	fail := func(what string, err error) (*Example, error) {
@@ -216,11 +216,11 @@ func initExample(config *rtexample.Target, device *wgpu.Device, queue *wgpu.Queu
 	keep(indexBuffer)
 
 	indexFormat := gputypes.IndexFormatUint32
-	indexCount := uint32(len(indices))
+	indexCount := uint32(len(indices)) //nolint:gosec // constant-size mesh
 	blasSizeDesc := wgpu.BlasTriangleGeometrySizeDescriptor{
 		VertexFormat: gputypes.VertexFormatFloat32x3,
 		// 3 coordinates per vertex
-		VertexCount: uint32(len(vertices) / 3),
+		VertexCount: uint32(len(vertices) / 3), //nolint:gosec // constant-size mesh
 		IndexFormat: &indexFormat,
 		IndexCount:  &indexCount,
 		Flags:       gputypes.ASGeometryFlagOpaque,

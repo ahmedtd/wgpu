@@ -145,6 +145,10 @@ type Device struct {
 	//
 	// Reference: wgpu-core device/resource.rs Device.tracker (DeviceTracker)
 	tracker *DeviceTracker
+
+	// rayTracing holds the acceleration structure build counter used for
+	// submit-time validation. nil for devices without HAL integration.
+	rayTracing *deviceRayTracingState
 }
 
 // Backend returns the backend type of the device's adapter.
@@ -188,6 +192,7 @@ func NewDevice(
 		trackerIndices: NewTrackerIndexAllocators(),
 		destroyQueue:   NewDestroyQueue(),
 		tracker:        NewDeviceTracker(),
+		rayTracing:     newDeviceRayTracingState(),
 		Label:          label,
 		Features:       features,
 		Limits:         limits,

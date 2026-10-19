@@ -28,6 +28,10 @@ var (
 
 	// ErrNoBackends is returned when no backends are registered.
 	ErrNoBackends = errors.New("wgpu: no backends registered (import a backend package)")
+
+	// ErrUnsupported is returned for operations the active backend does not
+	// support, such as ray tracing on the Rust FFI and browser backends.
+	ErrUnsupported = errors.New("wgpu: operation not supported by this backend")
 )
 
 // Draw-time validation sentinel errors.

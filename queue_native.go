@@ -58,13 +58,8 @@ func (q *Queue) Submit(commandBuffers ...*CommandBuffer) (uint64, error) {
 	// Validate user command buffers before closing the pending-write encoder.
 	// A validation error leaves buffered writes intact for a later valid Submit
 	// and cannot strand an ended internal command buffer.
-	for i, cb := range commandBuffers {
-		if cb == nil {
-			return 0, fmt.Errorf("wgpu: command buffer at index %d is nil", i)
-		}
-		if err := validateCommandBufferForSubmit(cb, i); err != nil {
-			return 0, err
-		}
+	if err := q.validateSubmit(commandBuffers); err != nil {
+		return 0, err
 	}
 
 	// Flush pending writes under lock, then release lock before HAL submit.
@@ -199,6 +194,20 @@ func (q *Queue) postSubmit(subIdx uint64, commandBuffers []*CommandBuffer) {
 	}
 	if len(allRefs) > 0 {
 		dq.TrackSubmission(subIdx, allRefs)
+	}
+
+	// Free acceleration structure scratch and staging buffers after the GPU
+	// completes this submission (Rust TempResource).
+	for _, cb := range commandBuffers {
+		if cb == nil || cb.core == nil {
+			continue
+		}
+		if temps := cb.core.TakeTempBuffers(); len(temps) > 0 {
+			halDevice := q.halDevice
+			dq.Defer(subIdx, "ASTempBuffers", func() {
+				destroyHALBuffers(halDevice, temps)
+			})
+		}
 	}
 
 	// Schedule HAL encoder recycling after GPU completion (BUG-DX12-004).
@@ -736,6 +745,47 @@ func (q *Queue) recordAndTrackAllBarriers(
 	q.barrierCB = barrierCB
 
 	return barrierCB, nil
+}
+
+// validateSubmit validates the command buffers of a Submit call, then their
+// acceleration structure builds and uses, assigning build indices in
+// submission order (Rust validate_acceleration_structure_actions).
+func (q *Queue) validateSubmit(commandBuffers []*CommandBuffer) error {
+	for i, cb := range commandBuffers {
+		if cb == nil {
+			return fmt.Errorf("wgpu: command buffer at index %d is nil", i)
+		}
+		if err := validateCommandBufferForSubmit(cb, i); err != nil {
+			return err
+		}
+	}
+	return q.validateAccelerationStructureActions(commandBuffers)
+}
+
+// validateAccelerationStructureActions runs core's submit-time acceleration
+// structure validation over the command buffers in submission order.
+func (q *Queue) validateAccelerationStructureActions(commandBuffers []*CommandBuffer) error {
+	if q.device == nil || q.device.core == nil {
+		return nil
+	}
+	coreBuffers := make([]*core.CoreCommandBuffer, 0, len(commandBuffers))
+	for _, cb := range commandBuffers {
+		coreBuffers = append(coreBuffers, cb.core)
+	}
+	if err := q.device.core.ValidateAccelerationStructureActions(coreBuffers); err != nil {
+		return fmt.Errorf("wgpu: Submit: %w", err)
+	}
+	return nil
+}
+
+// destroyHALBuffers destroys internal HAL buffers.
+func destroyHALBuffers(halDevice hal.Device, buffers []hal.Buffer) {
+	if halDevice == nil {
+		return
+	}
+	for _, buf := range buffers {
+		halDevice.DestroyBuffer(buf)
+	}
 }
 
 // release cleans up queue resources.

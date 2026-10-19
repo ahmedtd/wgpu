@@ -246,7 +246,7 @@ type BindGroupDescriptor struct {
 }
 
 // BindGroupEntry describes a single resource binding in a bind group.
-// Exactly one of Buffer, Sampler, or TextureView must be set.
+// Exactly one of Buffer, Sampler, TextureView, or AccelerationStructure must be set.
 type BindGroupEntry struct {
 	Binding     uint32
 	Buffer      *Buffer      // For buffer bindings
@@ -254,6 +254,9 @@ type BindGroupEntry struct {
 	Size        uint64       // Buffer binding size (0 = rest of buffer)
 	Sampler     *Sampler     // For sampler bindings
 	TextureView *TextureView // For texture bindings
+	// AccelerationStructure is for acceleration structure bindings
+	// (experimental, requires FeatureRayQuery).
+	AccelerationStructure *Tlas
 }
 
 // toHAL converts a BindGroupEntry to a gputypes.BindGroupEntry.
@@ -283,6 +286,12 @@ func (e *BindGroupEntry) toHAL() gputypes.BindGroupEntry {
 	case halView != nil:
 		entry.Resource = gputypes.TextureViewBinding{
 			TextureView: halView.NativeHandle(),
+		}
+	case e.AccelerationStructure != nil:
+		if halAS := e.AccelerationStructure.halAccelerationStructure(); halAS != nil {
+			entry.Resource = gputypes.AccelerationStructureBinding{
+				AccelerationStructure: halAS.NativeHandle(),
+			}
 		}
 	}
 

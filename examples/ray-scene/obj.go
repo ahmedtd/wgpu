@@ -94,12 +94,12 @@ type objMtl struct {
 }
 
 // loadObj parses name (and any mtllib it references, relative to name) from fsys.
-func loadObj(fsys fs.FS, name string) (*objData, error) {
+func loadObj(fsys fs.FS, name string) (*objData, error) { //nolint:gocognit,gocyclo,cyclop,funlen // line-oriented OBJ parser, kept close to tobj
 	f, err := fsys.Open(name)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	data := &objData{materials: map[string]objMtl{}}
 	var object objObject
@@ -235,7 +235,7 @@ func (d *objData) loadMtl(fsys fs.FS, name string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var cur string
 	sc := bufio.NewScanner(f)
@@ -298,7 +298,7 @@ func parseFloats3(args []string) ([3]float32, error) {
 }
 
 // loadModel is a port of the Rust example's load_model.
-func loadModel(scene *RawSceneComponents, fsys fs.FS, name string) error {
+func loadModel(scene *RawSceneComponents, fsys fs.FS, name string) error { //nolint:gocognit // mirrors the Rust example's load_model
 	data, err := loadObj(fsys, name)
 	if err != nil {
 		return err
@@ -345,7 +345,7 @@ func loadModel(scene *RawSceneComponents, fsys fs.FS, name string) error {
 
 			var material Material
 			// Rust only uses materials that resolved to an MTL entry.
-			if mat, ok := data.materials[group.material]; ok && group.material != "" {
+			if mat, ok := data.materials[group.material]; ok && group.material != "" { //nolint:nestif // material fields map one-to-one onto the Rust example
 				if mat.kd != nil {
 					material.Albedo = *mat.kd
 				}

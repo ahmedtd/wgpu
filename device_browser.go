@@ -207,6 +207,9 @@ func (d *Device) CreateBindGroup(desc *BindGroupDescriptor) (*BindGroup, error) 
 	if desc == nil {
 		return nil, fmt.Errorf("wgpu: bind group descriptor is nil")
 	}
+	if err := rejectAccelerationStructureEntries(desc.Entries); err != nil {
+		return nil, err
+	}
 	var layoutRef js.Value
 	if desc.Layout != nil && desc.Layout.browser != nil {
 		layoutRef = desc.Layout.browser.Ref()

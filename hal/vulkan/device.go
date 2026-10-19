@@ -88,6 +88,11 @@ type Device struct {
 	// creation (VK_KHR_acceleration_structure + VK_KHR_ray_query).
 	rayQuery bool
 
+	// scratchBufferAlignment is minAccelerationStructureScratchOffsetAlignment.
+	// Vulkan has no usage bit for scratch buffers, so CreateBuffer raises the
+	// memory alignment of AccelerationStructureScratch buffers to it.
+	scratchBufferAlignment uint32
+
 	// Timeline semaphore fence (VK-IMPL-001).
 	// When available (Vulkan 1.2+), replaces both frame fences and transfer fence
 	// with a single timeline semaphore. Falls back to binary fences on older drivers.
@@ -366,10 +371,17 @@ func (d *Device) CreateBuffer(desc *hal.BufferDescriptor) (hal.Buffer, error) {
 		}
 	}
 
+	// There is no way to specify the scratch usage to Vulkan, so make sure the
+	// alignment is large enough. Matches Rust wgpu-hal device.rs create_buffer.
+	alignment := uint64(memReqs.Alignment)
+	if desc.Usage&gputypes.BufferUsageAccelerationStructureScratch != 0 {
+		alignment = max(alignment, uint64(d.scratchBufferAlignment))
+	}
+
 	// Allocate memory
 	memBlock, err := d.allocator.Alloc(memory.AllocationRequest{
 		Size:           uint64(memReqs.Size),
-		Alignment:      uint64(memReqs.Alignment),
+		Alignment:      alignment,
 		Usage:          memUsage,
 		MemoryTypeBits: memReqs.MemoryTypeBits,
 	})

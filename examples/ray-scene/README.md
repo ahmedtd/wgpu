@@ -19,15 +19,15 @@ Differences from the Rust example:
   explicitly.
 - `obj.go` has a small OBJ/MTL loader that reproduces the grouping rules of
   the `obj` 0.10 crate the Rust example uses. Those rules decide how many BLAS
-  geometries each model gets. The loader builds and is tested without the
-  `rtwip` tag (`go test ./examples/ray-scene`).
+  geometries each model gets. It is tested by `go test ./examples/ray-scene`.
 
-**Status:** this example is written against the public ray tracing API
-planned in [`docs/RAY-TRACING-PLAN.md`](../../docs/RAY-TRACING-PLAN.md), which
-doesn't exist yet. Until it does, the example only builds with `-tags rtwip`.
+**Status:** matches `screenshot.png` on Vulkan (RTX 5080, mean difference
+0.000125), with the validation layers clean. It needs an adapter with
+`FeatureRayQuery`; the Rust FFI and browser backends return `ErrUnsupported`.
 
 ```bash
-GOGPU_GRAPHICS_API=vulkan go run -tags rtwip ./examples/ray-scene -o out.png
+GOGPU_GRAPHICS_API=vulkan go run ./examples/ray-scene -o out.png
+# GOGPU_DEBUG=1 enables validation layers and fails on validation errors.
 ```
 
 `shader.wgsl`, `screenshot.png`, `screenshot-vulkan.png` and the files under

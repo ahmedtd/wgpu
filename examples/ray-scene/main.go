@@ -1,8 +1,6 @@
 // Copyright 2026 The GoGPU Authors
 // SPDX-License-Identifier: MIT
 
-//go:build rtwip
-
 // Command ray-scene is a port of Rust wgpu's examples/features/src/ray_scene.
 //
 // It loads two OBJ models (Ferris and a cube + Suzanne scene), builds one
@@ -14,13 +12,12 @@
 // against the Rust reference screenshot. Since there is no window, the Rust
 // resize handler is not ported.
 //
-// The build tag rtwip is temporary: this example is written against the
-// public ray tracing API planned in docs/RAY-TRACING-PLAN.md, which does not
-// exist yet. Remove the tag in plan task 3.9.
+// It needs an adapter with FeatureRayQuery (Vulkan only for now; see
+// docs/RAY-TRACING.md).
 //
 // Usage:
 //
-//	GOGPU_GRAPHICS_API=vulkan go run -tags rtwip ./examples/ray-scene [-o out.png]
+//	GOGPU_GRAPHICS_API=vulkan go run ./examples/ray-scene [-o out.png]
 package main
 
 import (
@@ -104,18 +101,26 @@ type GeometryEntry struct {
 
 // podBytes is the bytemuck::cast_slice equivalent for the example's
 // fixed-layout structs (little-endian hosts only, like the GPU upload path).
+// u32 converts a scene index or count to uint32, panicking if it doesn't fit.
+func u32(n int) uint32 {
+	if n < 0 || n > math.MaxUint32 {
+		panic(fmt.Sprintf("ray-scene: %d does not fit in uint32", n))
+	}
+	return uint32(n)
+}
+
 func podBytes[T any](v []T) []byte {
 	if len(v) == 0 {
 		return nil
 	}
-	return unsafe.Slice((*byte)(unsafe.Pointer(&v[0])), len(v)*int(unsafe.Sizeof(v[0])))
+	return unsafe.Slice((*byte)(unsafe.Pointer(&v[0])), len(v)*int(unsafe.Sizeof(v[0]))) //nolint:gosec // reinterprets a slice of plain-data structs
 }
 
 func uploadSceneComponents(device *wgpu.Device, queue *wgpu.Queue, scene *RawSceneComponents) (*SceneComponents, error) {
 	geometryBufferContent := make([]GeometryEntry, 0, len(scene.geometries))
 	for _, g := range scene.geometries {
 		geometryBufferContent = append(geometryBufferContent, GeometryEntry{
-			FirstIndex: uint32(g.indices.start),
+			FirstIndex: u32(g.indices.start),
 			Material:   g.material,
 		})
 	}
@@ -123,9 +128,9 @@ func uploadSceneComponents(device *wgpu.Device, queue *wgpu.Queue, scene *RawSce
 	instanceBufferContent := make([]InstanceEntry, 0, len(scene.instances))
 	for _, inst := range scene.instances {
 		instanceBufferContent = append(instanceBufferContent, InstanceEntry{
-			FirstVertex:   uint32(inst.vertices.start),
-			FirstGeometry: uint32(inst.geometries.start),
-			LastGeometry:  uint32(inst.geometries.end),
+			FirstVertex:   u32(inst.vertices.start),
+			FirstGeometry: u32(inst.geometries.start),
+			LastGeometry:  u32(inst.geometries.end),
 			Pad:           1, // the Rust example sets _pad: 1
 		})
 	}
@@ -163,10 +168,10 @@ func uploadSceneComponents(device *wgpu.Device, queue *wgpu.Queue, scene *RawSce
 	for _, inst := range scene.instances {
 		sizeDesc := make([]wgpu.BlasTriangleGeometrySizeDescriptor, 0, inst.geometries.end-inst.geometries.start)
 		for i := inst.geometries.start; i < inst.geometries.end; i++ {
-			indexCount := uint32(scene.geometries[i].indices.end - scene.geometries[i].indices.start)
+			indexCount := u32(scene.geometries[i].indices.end - scene.geometries[i].indices.start)
 			sizeDesc = append(sizeDesc, wgpu.BlasTriangleGeometrySizeDescriptor{
 				VertexFormat: gputypes.VertexFormatFloat32x3,
-				VertexCount:  uint32(inst.vertices.end - inst.vertices.start),
+				VertexCount:  u32(inst.vertices.end - inst.vertices.start),
 				IndexFormat:  &indexFormat,
 				IndexCount:   &indexCount,
 				Flags:        gputypes.ASGeometryFlagOpaque,
@@ -192,11 +197,11 @@ func uploadSceneComponents(device *wgpu.Device, queue *wgpu.Queue, scene *RawSce
 		sizeDesc := sizeDescriptors[i]
 		triangleGeometries := make([]wgpu.BlasTriangleGeometry, 0, len(sizeDesc))
 		for j := range sizeDesc {
-			firstIndex := uint32(scene.geometries[inst.geometries.start+j].indices.start)
+			firstIndex := u32(scene.geometries[inst.geometries.start+j].indices.start)
 			triangleGeometries = append(triangleGeometries, wgpu.BlasTriangleGeometry{
 				Size:         &sizeDesc[j],
 				VertexBuffer: sc.vertices,
-				FirstVertex:  uint32(inst.vertices.start),
+				FirstVertex:  u32(inst.vertices.start),
 				VertexStride: uint64(unsafe.Sizeof(Vertex{})),
 				IndexBuffer:  sc.indices,
 				FirstIndex:   &firstIndex,
@@ -298,6 +303,9 @@ func run(out string, threshold float64) error {
 		return err
 	}
 	if err := rtexample.WritePNG(out, img); err != nil {
+		return err
+	}
+	if err := rtexample.CheckValidation(); err != nil {
 		return err
 	}
 	if threshold >= 0 {
@@ -460,7 +468,7 @@ func (ex *Example) render(view *wgpu.TextureView, device *wgpu.Device, queue *wg
 				ex.tlas.SetInstance(x+y*sideCount, wgpu.NewTlasInstance(
 					blases[blasIndex],
 					transform.Rows3x4(),
-					uint32(blasIndex),
+					u32(blasIndex),
 					0xff,
 				))
 			}

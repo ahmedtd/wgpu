@@ -398,9 +398,14 @@ func (d *Device) buildGeometryInfosForSizeQuery(
 
 			// If USE_TRANSFORM flag is set AND a transform buffer is provided,
 			// set a non-zero address so the spec knows transforms are used for sizing.
+			// The size query ignores addresses except to check transformData
+			// for NULL, so core passes no buffer and any non-zero value works.
 			if desc.Flags.Contains(gputypes.ASFlagUseTransform) && tri.Transform != nil {
-				triangleData.TransformData = vk.DeviceOrHostAddressConstKHR(
-					d.getBufferDeviceAddress(tri.Transform.Buffer))
+				transformAddress := uint64(1)
+				if tri.Transform.Buffer != nil {
+					transformAddress = d.getBufferDeviceAddress(tri.Transform.Buffer)
+				}
+				triangleData.TransformData = vk.DeviceOrHostAddressConstKHR(transformAddress)
 			}
 
 			primCount := tri.VertexCount / 3

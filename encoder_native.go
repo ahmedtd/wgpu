@@ -102,6 +102,11 @@ func (e *CommandEncoder) trackBindGroup(bg *BindGroup) {
 		e.usedBindGroups = make(map[*BindGroup]struct{})
 	}
 	e.usedBindGroups[bg] = struct{}{}
+	if e.core != nil {
+		for _, tlas := range bg.boundTlases {
+			e.core.RecordTlasUse(tlas)
+		}
+	}
 }
 
 // copyTextureUsage describes one texture endpoint of a copy command.
@@ -658,8 +663,18 @@ func (e *CommandEncoder) DiscardEncoding() {
 	if raw != nil {
 		raw.DiscardEncoding()
 	}
+	e.destroyTempBuffers()
 	// Return pooled encoder immediately — no GPU work was submitted.
 	e.returnEncoderToPool()
+}
+
+// destroyTempBuffers destroys the encoder's acceleration structure scratch
+// and staging buffers. Called when the encoder will not be submitted.
+func (e *CommandEncoder) destroyTempBuffers() {
+	if e.core == nil || e.device == nil {
+		return
+	}
+	destroyHALBuffers(e.device.halDevice(), e.core.TakeTempBuffers())
 }
 
 // returnEncoderToPool resets and returns the HAL encoder to the device's pool.
@@ -697,6 +712,7 @@ func (e *CommandEncoder) Finish() (*CommandBuffer, error) {
 			ref.Drop()
 		}
 		e.trackedRefs = nil
+		e.destroyTempBuffers()
 		// Return the pooled encoder on error — it won't be submitted.
 		e.returnEncoderToPool()
 		return nil, err
@@ -899,6 +915,9 @@ func (cb *CommandBuffer) Release() {
 		ref.Drop()
 	}
 	cb.trackedRefs = nil
+	if cb.core != nil && cb.device != nil {
+		destroyHALBuffers(cb.device.halDevice(), cb.core.TakeTempBuffers())
+	}
 	cb.dropUsedSets()
 }
 
