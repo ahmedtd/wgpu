@@ -14,8 +14,7 @@ difference threshold of 0.02.
 **Status:** matches `screenshot.png` exactly on Vulkan (RTX 5080). It needs an
 adapter with `FeatureRayQuery`; the Rust FFI and browser backends return
 `ErrUnsupported`. With `GOGPU_DEBUG=1`, validation messages are printed and
-fail the run. Two known layout errors remain, because storage textures bound in
-passes are not usage-tracked yet (plan task 3.10).
+fail the run; the run is validation clean.
 
 ```bash
 GOGPU_GRAPHICS_API=vulkan go run ./examples/ray-traced-triangle -o out.png

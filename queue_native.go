@@ -35,7 +35,7 @@ type Queue struct {
 	lastSubmissionIndex atomic.Uint64
 
 	// barrierEncoder/barrierCB hold the barrier encoder from the current
-	// Submit's prependTextureBarriers. Deferred recycling happens in postSubmit
+	// Submit's insertTextureBarriers. Deferred recycling happens in postSubmit
 	// with the ACTUAL submission index (not the stale lastSubmissionIndex).
 	barrierEncoder hal.CommandEncoder
 	barrierCB      hal.CommandBuffer
@@ -63,19 +63,9 @@ func (q *Queue) Submit(commandBuffers ...*CommandBuffer) (uint64, error) {
 	}
 
 	// Flush pending writes under lock, then release lock before HAL submit.
-	var pendingCmdBuf hal.CommandBuffer
-	var flushedEncoder hal.CommandEncoder
-	var flushedDstTextures []hal.Texture
-	var flushedDstBuffers []hal.Buffer
-
-	if q.pending != nil {
-		q.pending.mu.Lock()
-		var err error
-		pendingCmdBuf, flushedEncoder, flushedDstTextures, flushedDstBuffers, err = q.pending.flush()
-		q.pending.mu.Unlock()
-		if err != nil {
-			return 0, fmt.Errorf("wgpu: flush pending writes: %w", err)
-		}
+	pendingCmdBuf, flushedEncoder, flushedDstTextures, flushedDstBuffers, err := q.flushPendingWrites()
+	if err != nil {
+		return 0, err
 	}
 
 	// Build combined command buffer list: pending first, then user buffers.
@@ -103,8 +93,15 @@ func (q *Queue) Submit(commandBuffers ...*CommandBuffer) (uint64, error) {
 	// tracker produces PendingTransitions that are recorded as barriers in a
 	// preamble command buffer prepended before user CBs.
 	//
+	// The barriers start from the states the pending writes leave textures
+	// in, so they run after the pending writes command buffer.
+	//
 	// Reference: wgpu-core device/queue.rs pre_submit_for_command_buffers
-	allBuffers, err := q.prependTextureBarriers(allBuffers, commandBuffers)
+	barrierPos := 0
+	if pendingCmdBuf != nil {
+		barrierPos = 1
+	}
+	allBuffers, err = q.insertTextureBarriers(allBuffers, barrierPos, commandBuffers)
 	if err != nil {
 		return 0, err
 	}
@@ -160,6 +157,26 @@ func (q *Queue) Submit(commandBuffers ...*CommandBuffer) (uint64, error) {
 	}
 
 	return subIdx, nil
+}
+
+// flushPendingWrites closes the pending writes batch, if any, and records the
+// states it leaves written textures in. Returns the batch's command buffer
+// (nil if there was nothing to flush), its encoder, and the destination
+// resources that must stay alive until the submission completes.
+func (q *Queue) flushPendingWrites() (hal.CommandBuffer, hal.CommandEncoder, []hal.Texture, []hal.Buffer, error) {
+	if q.pending == nil {
+		return nil, nil, nil, nil, nil
+	}
+	q.pending.mu.Lock()
+	defer q.pending.mu.Unlock()
+	cmdBuf, encoder, dstTextures, dstBuffers, err := q.pending.flush()
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("wgpu: flush pending writes: %w", err)
+	}
+	if cmdBuf != nil {
+		q.recordQueueTextureWrites(q.pending.flushedTextures)
+	}
+	return cmdBuf, encoder, dstTextures, dstBuffers, nil
 }
 
 // postSubmit handles bookkeeping after a successful HAL submit:
@@ -519,17 +536,38 @@ func validateSubmitTexture(tex *Texture, index int) error {
 	return nil
 }
 
-// prependTextureBarriers creates a barrier command buffer (if needed) and
-// prepends it to allBuffers. Returns the updated buffer list.
-func (q *Queue) prependTextureBarriers(allBuffers []hal.CommandBuffer, commandBuffers []*CommandBuffer) ([]hal.CommandBuffer, error) {
+// insertTextureBarriers creates a barrier command buffer (if needed) and
+// inserts it into allBuffers at pos. Returns the updated buffer list.
+func (q *Queue) insertTextureBarriers(allBuffers []hal.CommandBuffer, pos int, commandBuffers []*CommandBuffer) ([]hal.CommandBuffer, error) {
 	barrierCB, err := q.injectBarriers(commandBuffers)
 	if err != nil {
 		return nil, fmt.Errorf("wgpu: submit barrier injection: %w", err)
 	}
 	if barrierCB != nil {
-		allBuffers = append([]hal.CommandBuffer{barrierCB}, allBuffers...)
+		allBuffers = append(allBuffers, nil)
+		copy(allBuffers[pos+1:], allBuffers[pos:])
+		allBuffers[pos] = barrierCB
 	}
 	return allBuffers, nil
+}
+
+// recordQueueTextureWrites records in the device tracker that the pending
+// writes batch about to be submitted leaves each written texture in the
+// TextureBinding state (its closing barrier, see writeTextureFor).
+//
+// Reference: wgpu-core queue.rs write_texture (the device tracker records the
+// write's texture usage)
+func (q *Queue) recordQueueTextureWrites(indices []track.TrackerIndex) {
+	if len(indices) == 0 || q.device == nil || q.device.core == nil {
+		return
+	}
+	tracker := q.device.core.Tracker()
+	if tracker == nil {
+		return
+	}
+	for _, index := range indices {
+		tracker.InsertTexture(index, track.TextureUsesResource)
+	}
 }
 
 // injectBarriers merges each command buffer's textureScope and bufferScope

@@ -142,6 +142,37 @@ func TestTextureTracker_MergeEncoder(t *testing.T) {
 	}
 }
 
+// TestTextureTracker_MergeEncoderFromUninitialized pins the first use of a
+// new texture: a barrier out of the uninitialized state, except into a
+// depth/stencil attachment, whose render pass load operation establishes the
+// state itself.
+func TestTextureTracker_MergeEncoderFromUninitialized(t *testing.T) {
+	t.Parallel()
+
+	device := NewTextureTracker()
+	for i := TrackerIndex(0); i < 3; i++ {
+		device.InsertSingle(i, TextureUsesUninitialized)
+	}
+	cmd := NewEncoderTextureTracker()
+	cmd.SetSingle(0, TextureUsesStorageWrite)
+	cmd.SetSingle(1, TextureUsesColorTarget)
+	cmd.SetSingle(2, TextureUsesDepthStencilWrite)
+
+	transitions := device.MergeEncoder(cmd)
+	if len(transitions) != 2 {
+		t.Fatalf("transitions = %+v, want storage and color target", transitions)
+	}
+	for i, want := range []TextureUses{TextureUsesStorageWrite, TextureUsesColorTarget} {
+		got := transitions[i]
+		if got.Index != TrackerIndex(i) || got.Usage.From != TextureUsesUninitialized || got.Usage.To != want {
+			t.Errorf("transition %d = %+v, want Uninitialized -> %v", i, got, want)
+		}
+	}
+	if got := device.GetUsage(2); got != TextureUsesDepthStencilWrite {
+		t.Errorf("device state 2 = %v, want DepthStencilWrite", got)
+	}
+}
+
 func TestEncoderBufferTracker(t *testing.T) {
 	t.Parallel()
 

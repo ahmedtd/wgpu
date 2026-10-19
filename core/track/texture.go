@@ -290,7 +290,7 @@ func (t *TextureTracker) MergeEncoder(enc *EncoderTextureTracker) []TexturePendi
 			continue
 		}
 		current := t.states[index].usage
-		if !SkipBarrier(current, start) {
+		if !SkipBarrier(current, start) && !depthAttachmentInitializesTexture(current, start) {
 			transitions = append(transitions, TexturePendingTransition{
 				Index: index,
 				Usage: TextureStateTransition{From: current, To: start},
@@ -299,6 +299,17 @@ func (t *TextureTracker) MergeEncoder(enc *EncoderTextureTracker) []TexturePendi
 		t.states[index].usage = end
 	}
 	return transitions
+}
+
+// depthAttachmentInitializesTexture reports whether a texture with
+// uninitialized contents is first used as a depth/stencil attachment. No
+// barrier is recorded ahead of it: the render pass establishes the
+// attachment's state through its load operation, and the HAL barrier
+// conversion (ToTextureUsage → RenderAttachment) would request a color
+// attachment state for a depth texture.
+func depthAttachmentInitializesTexture(current, start TextureUses) bool {
+	const depthStencil = TextureUsesDepthStencilRead | TextureUsesDepthStencilWrite
+	return current == TextureUsesUninitialized && start&depthStencil != 0
 }
 
 // TextureUsageScope tracks texture usage within ONE WebGPU usage scope: a

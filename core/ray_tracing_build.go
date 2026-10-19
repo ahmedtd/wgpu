@@ -143,11 +143,14 @@ func (e *CoreCommandEncoder) BuildAccelerationStructures(blasEntries []BlasBuild
 	guard := e.device.snatchLock.Read()
 	defer guard.Release()
 	halDevice := e.device.Raw(guard)
-	rawPtr := e.raw.Get(guard)
-	if halDevice == nil || rawPtr == nil {
+	if halDevice == nil {
 		return ErrResourceDestroyed
 	}
-	raw := *rawPtr
+	raw, err := e.recordingLocked(guard)
+	if err != nil {
+		return err
+	}
+	e.cbDirty = true
 
 	scratchAlignment := uint64(e.device.alignments().RayTracingScratchBufferAlignment)
 	state := &buildState{

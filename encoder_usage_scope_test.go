@@ -199,7 +199,15 @@ func TestCopyBufferToTextureThenSampledInRenderPassSameEncoder(t *testing.T) {
 	runColorPass(t, enc, targetView, gputypes.LoadOpClear, func(pass *RenderPassEncoder) {
 		pass.SetBindGroup(0, group, nil)
 	})
-	mustFinish(t, enc)
+	cb := mustFinish(t, enc)
+
+	// The bind group's texture is tracked: the pass moves it from CopyDst to
+	// sampled (see also TestBindGroupTextureTransitionUsesTransitCommandBuffer).
+	idx := sampled.coreTexture.TrackingData().Index()
+	if got := cb.core.TextureScope().EndUsage(idx); got != track.TextureUsesResource {
+		t.Errorf("last usage in command buffer = %v, want Resource", got)
+	}
+	cb.Release()
 }
 
 // TestCopyBufferToBufferThenVertexBufferSameEncoder writes vertex data with a

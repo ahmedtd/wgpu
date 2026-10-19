@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/gogpu/gputypes"
+	"github.com/gogpu/wgpu/core/track"
 	"github.com/gogpu/wgpu/hal"
 )
 
@@ -71,6 +72,12 @@ type pendingWrites struct {
 	// across acquisitions: every recorded acquisition must still be live when
 	// the batch is flushed.
 	dstTextures map[hal.Texture][]*Texture
+
+	// flushedTextures holds the tracker indices of the textures written by
+	// the batch the last flush() closed. That batch leaves them in the
+	// TextureBinding state, which Submit records in the device tracker.
+	// Reused across flushes.
+	flushedTextures []track.TrackerIndex
 
 	// inflight tracks staging buffers and encoders from previous submissions,
 	// keyed by submission index. Cleaned up when PollCompleted advances past them.
@@ -542,8 +549,17 @@ func (pw *pendingWrites) flush() (hal.CommandBuffer, hal.CommandEncoder, []hal.T
 	}
 
 	var flushedDstTextures []hal.Texture
-	for tex := range pw.dstTextures {
+	pw.flushedTextures = pw.flushedTextures[:0]
+	for tex, owners := range pw.dstTextures {
 		flushedDstTextures = append(flushedDstTextures, tex)
+		for _, owner := range owners {
+			if owner.coreTexture == nil {
+				continue
+			}
+			if td := owner.coreTexture.TrackingData(); td != nil && td.Index().IsValid() {
+				pw.flushedTextures = append(pw.flushedTextures, td.Index())
+			}
+		}
 	}
 	var flushedDstBuffers []hal.Buffer
 	for buf := range pw.dstBuffers {

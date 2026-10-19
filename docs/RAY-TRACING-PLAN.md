@@ -8,7 +8,7 @@
 > the Rust reference screenshots.
 > **Reference checkouts:** `../rust-wgpu` (commit `e084b66aa`), `../go-naga` (v0.20.3, `main`).
 > **Last updated:** 2026-10-18 (Phases 0, 2 and 3 complete, except the naga and gputypes releases + `go.mod` bumps
-> in 1.4 and 3.1, and the new task 3.10 for the two remaining `ray-traced-triangle` validation errors)
+> in 1.4 and 3.1, 3.10 done 2026-10-18)
 
 This document is the hand-off point between sessions. **Each session should pick
 the first unchecked task, do it, tick the box, and add a line to the
@@ -483,19 +483,35 @@ All go-naga changes are **uncommitted** in `../go-naga` on branch `rt-work`. `go
   validation error was logged.
 - [x] **3.9** Get `ray-scene` matching its golden image on Vulkan (it needs multiple BLASes, multi-geometry BLASes, and a per-frame TLAS rebuild).
   **Done:** mean diff 0.000125, validation clean.
-- [ ] **3.10** **Bind-group texture/buffer usage tracking inside passes** (not RT-specific, but it blocks a clean
+- [x] **3.10** **Bind-group texture/buffer usage tracking inside passes** (not RT-specific, but it blocks a clean
   `ray-traced-triangle` run). Resources bound via bind groups are not usage-tracked in compute or render passes, so
   nothing transitions the storage texture from `GENERAL` (compute write) to `SHADER_READ_ONLY_OPTIMAL` (fragment
   sample). The result is `VUID-vkCmdDraw-imageLayout-00344` and `VUID-vkCmdDraw-None-09600`. Rust merges bind group
   usages into the pass scope: compute passes emit barriers inline per dispatch, and render passes need a transit
   command buffer before the pass (the unused multi-CB `OpenPass`/`CloseAndSwap` machinery; see the "Known gap" comment
   in `EndRenderPass`). This is a cross-backend core encoder change.
+  **Done:** `core/pass_usage.go`. Bind groups carry their usages (`BindGroup.usages`, derived from the layout). Compute
+  passes build a usage scope per dispatch from the pipeline's active groups (plus the indirect buffer) and record
+  barriers inline. Render passes merge every bind group set into the pass scope. When a render pass needs
+  barriers, they go into a transit command buffer inserted before the pass. A render pass gets its own recording
+  only when earlier commands share the current one (`cbDirty`), and only for pooled HAL encoders (`multiRecording`).
+  Recordings reopen lazily. A second root cause: new textures were never registered in the device tracker, so
+  nothing moved them out of `UNDEFINED`. `CreateTexture` now inserts `TextureUsesUninitialized`, as Rust does.
+  The barrier is skipped into depth/stencil attachments, because the HALs map those to color states. Flushed queue
+  writes record `Resource`, and the submit barrier command buffer now runs *after* the pending-writes one.
+  `ray-traced-triangle` is validation clean. The new integration test `TestStorageTextureWriteThenSampleOnVulkan`
+  (`-tags integration`) reproduces both VUIDs on the old code. New gaps are in 3.11.
 - [ ] **3.11** Deferred Phase 3 gaps (each mirrors a Rust check or feature that isn't ported yet):
   buffer init tracking for BLAS/TLAS input buffers; same-device checks for AS resources and buffers;
   TLAS uses inside render bundles (bundles don't call `trackBindGroup`, so no `UseTlas` action is recorded);
   the `MaxAccelerationStructuresPerShaderStage` limit at bind group layout creation; a `FeatureRayQuery` check at
   bind group layout creation in core (today only the Vulkan HAL rejects it); and the compaction-size queries at
-  build time (with 5.1).
+  build time (with 5.1). Found in 3.10: render bundle bind groups are not merged into the pass scope; render-pass
+  indirect draw buffers are not usage-tracked; the Vulkan and DX12 HALs map `RenderAttachment` to color states even
+  for depth formats; Vulkan pending writes transition from `CurrentUsage()`, which is 0 (`UNDEFINED`), so partial
+  writes discard earlier contents; `Texture.Release` frees the tracker index without removing it from the device
+  tracker (surface textures that reuse it see stale state). Pre-existing, unrelated: under `-tags integration`, 9
+  root tests fail and `TestTypedSurfaceCreationPathsUseBackendMap` segfaults, the same as on the parent commit.
 
 ### Phase 4 — Validation and test parity
 
@@ -554,3 +570,4 @@ All go-naga changes are **uncommitted** in `../go-naga` on branch `rt-work`. `go
 | 2026-10-18 | Phase 1 (go-naga, uncommitted on `../go-naga` `rt-work`): fixed the `CompactTypes` SpecialTypes bug (1.1) and ported two SPIR-V ray-query fixes from upstream `55534165`. Added the example shaders to the own corpus with optional per-shader TOML and Rust-derived references; IR matches Rust exactly, and MSL/HLSL deviations are recorded (1.2). `spirv-val --target-env vulkan1.2` is clean at SPIR-V 1.3/1.4 (1.3). go-wgpu uses `go.work` → `../go-naga`, and builds and tests clean (1.4, pending naga release). New tasks: 1.5 (port remaining MSL/HLSL/terminate commits), 2.9 (Vulkan shader compile options parity, notably init tracking). Next: release naga + bump `go.mod`, then Phase 2. |
 | 2026-10-18 | Phase 2 (Vulkan HAL) done: RT procs loaded; `FeatureRayQuery`, limits, and alignments reported; extensions and the feature chain enabled on request; RT buffer usages and device-address memory; AS bind group descriptors; build-loop desync and lifetimes fixed; AS buffer barrier states; ray query init tracking. Bugs found and fixed: AS geometry union alignment, `vk-gen` `extnumber` (55 constants), build-sizes FFI signature, and storage-image descriptors written as sampled images. `TestRayQuerySmoke` passes on the RTX 5080 with validation clean. Did 3.1's gputypes code early (`../gputypes` `rt-work`, committed locally), so `GOWORK=off` builds are broken until the naga and gputypes releases. New task 2.10. Next: Phase 3 (3.2 core resources). |
 | 2026-10-18 | Phase 3 done (3.2–3.9, plus 0.6 and 0.7). Ported wgpu-core's create/build/submit RT paths into `core/ray_tracing_*.go` (not `internal/raytracing.BuildContext`, whose semantics differ). Added the public API in `raytracing*.go` with Rust FFI and browser stubs, the bind group AS entry, and headless tests on the software HAL. Vulkan HAL fixes: scratch alignment, size-query nil transform, descriptor pool selection by optional types. Both examples build without `rtwip`. `ray-scene` matches its golden image with validation clean. `ray-traced-triangle` matches too, but has 2 layout validation errors from untracked bind-group textures in passes (new task 3.10). Deferred checks recorded as 3.11. `go test ./...` and `golangci-lint` are clean. Next: 3.10, then Phase 4. |
+| 2026-10-18 | 3.10 done: pass-scope usage tracking for bind groups (per dispatch for compute, transit command buffer for render passes), uninitialized device state for new textures, queue-write state recording, and submit barriers moved after pending writes. Both RT examples are validation clean and match their golden images. The other headless examples are unchanged on Vulkan (validation clean, identical output). `go test ./...`, race, and lint are clean. Uncommitted. Next: 3.11 / Phase 4. |

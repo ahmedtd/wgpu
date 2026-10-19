@@ -205,6 +205,12 @@ type BindGroup struct {
 	// group is destroyed. Setting the bind group records a TLAS use on the
 	// encoder for submit-time validation (Rust AsAction::UseTlas).
 	boundTlases []*core.Tlas
+	// usages are the buffer and texture usages of the bound resources.
+	// Setting the bind group merges them into the render pass's usage scope,
+	// or into the usage scope of each dispatch whose pipeline uses the group,
+	// so the resources are transitioned into these usages (Rust
+	// BindGroup.used).
+	usages *core.BindGroupUsages
 }
 
 // Release marks the bind group for destruction. Drops the application's
