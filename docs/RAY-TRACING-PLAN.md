@@ -7,7 +7,7 @@
 > `rust-wgpu/examples/features/src/ray_scene` run on the Vulkan backend and match
 > the Rust reference screenshots.
 > **Reference checkouts:** `../rust-wgpu` (commit `e084b66aa`), `../go-naga` (v0.20.3, `main`).
-> **Last updated:** 2026-10-18 (Phase 0 complete)
+> **Last updated:** 2026-10-18 (Phase 0 complete; Phase 1 done except the naga release + `go.mod` bump in 1.4)
 
 This document is the hand-off point between sessions. **Each session should pick
 the first unchecked task, do it, tick the box, and add a line to the
@@ -35,7 +35,7 @@ backend can't actually run any of it yet.
 | `wgpu` (public API) | **Missing** | No `Blas`, `Tlas`, `TlasInstance`, `Device.CreateBlas/CreateTlas`, `CommandEncoder.BuildAccelerationStructures`, `BindGroupEntry` AS resource, or `Queue.CompactBlas`. |
 | Rust FFI backend (`-tags rust`) | Not available | `go-webgpu/webgpu` v0.5.5 has no RT bindings. Stub the API with `ErrUnsupported`. |
 | Browser backend | Not available | Not in the W3C spec. Stub the API with `ErrUnsupported`. |
-| go-naga (WGSL → SPIR-V) | **Nearly works** | `enable wgpu_ray_query`, `acceleration_structure`, `ray_query`, `RayDesc`, `rayQuery*` builtins and SPIR-V `ray_query.go` helpers all exist. The upstream snapshot `ray-query.wgsl` compiles. **Both Rust example shaders panic** in the SPIR-V backend (bug below). |
+| go-naga (WGSL → SPIR-V) | **Works (rt-work branch, unreleased)** | `enable wgpu_ray_query`, `acceleration_structure`, `ray_query`, `RayDesc`, `rayQuery*` builtins and SPIR-V `ray_query.go` helpers all exist. The `CompactTypes` panic (§1.2) is fixed on `../go-naga` branch `rt-work`, and both example shaders compile and pass `spirv-val --target-env vulkan1.2` (see Phase 1). |
 
 ### 1.1 Vulkan blockers (all confirmed by reading the code)
 
@@ -76,7 +76,7 @@ backend can't actually run any of it yet.
 8. **Pipelines must declare SPIR-V capability support.** Check that `core/spirv_capabilities.go` and the Vulkan pipeline creation
    accept `RayQueryKHR` / `SPV_KHR_ray_query` when the feature is enabled.
 
-### 1.2 go-naga blocker (confirmed and root-caused)
+### 1.2 go-naga blocker (confirmed and root-caused) — FIXED in Phase 1.1
 
 `nagac ../rust-wgpu/examples/features/src/ray_traced_triangle/shader.wgsl` panics with
 `index out of range [15] with length 15` in `spirv/internal/codegen/backend.go:604 emitType`, called from
@@ -310,19 +310,44 @@ Gaps found while porting (not ray tracing specific; fix when convenient):
 - [ ] **0.6** The examples depend on `MappedAtCreation` writes through `MappedRange.BytesMut()` + `Unmap`
   working for `BLAS_INPUT`/`STORAGE`/`UNIFORM` buffers on Vulkan. That path hasn't been exercised by these
   examples yet. Check it during 2.8 or 3.8.
-- [ ] **0.7** `golangci-lint` isn't installed on the dev box, so the new example code hasn't been linted. Run
+- [ ] **0.7** `golangci-lint` isn't installed on the dev box (still true after Phase 1), so the new example code hasn't been linted. Run
   `golangci-lint run ./examples/...` (with and without `--build-tags rtwip`).
 
 ### Phase 1 — go-naga fixes (in `../go-naga`, branch `rt-work`)
 
-- [ ] **1.1** Fix the `CompactTypes` SpecialTypes remap (§1.2). Add a regression test in `ir/` that compiles
-  `ray_traced_triangle/shader.wgsl` (or a minimal shader where an unused type precedes `RayIntersection`).
-- [ ] **1.2** Add both example shaders to the snapshot corpus (`snapshot/testdata/own/` or similar) and compare the
-  IR/SPIR-V against Rust naga output.
-- [ ] **1.3** Run `spirv-val --target-env vulkan1.2` on the output. Fix any validation failures. Look first at the
-  `RayQueryKHR` capability, the `SPV_KHR_ray_query` extension, `OpTypeAccelerationStructureKHR` decorations, and the
-  helper-function layout in `spirv/internal/codegen/ray_query.go`.
-- [ ] **1.4** Wire go-wgpu to the fixed naga (`go.work` during dev, then bump `go.mod` after a naga release).
+All go-naga changes are **uncommitted** in `../go-naga` on branch `rt-work`. `go test ./...` there passes with
+`NAGA_REQUIRE_TOOLS=spirv-val,spirv-dis`.
+
+- [x] **1.1** Fixed in `ir/compact.go`, matching Rust's `trace_special_types` / `adjust_special_types`. Special types
+  are now marked used, so an anonymous one survives compaction, and they're remapped in the removal path.
+  Regression test: `ir/compact_test.go` `TestCompactTypes_RemapsSpecialTypes`, which fails without the fix.
+- [x] **1.2** Added `ray-traced-triangle`, `ray-traced-triangle-blit`, and `ray-scene` to `snapshot/testdata/own/in/`.
+  The harness now accepts an optional `<name>.toml` next to an own shader (`rustParamsPath`); the two RT shaders use
+  `ray-query.toml`'s parameters (no GLSL target). Rust references were generated at the vendored corpus commit
+  `14328f49` and live in `snapshot/testdata/rust-derived/out/`, with the manifest rewritten.
+  Results: **IR matches Rust exactly**, both before and after compaction (`TestIRReference`, `TestIRReferenceCompact`).
+  SPIR-V matches structurally (`compareStructural` only compares counts). MSL and HLSL are recorded `bug` deviations,
+  for the same unported upstream commits as the corpus shader `ray-query`: MSL `f6d9a1db` / `a03be8d2` (+ `74827c41`
+  for compute) and HLSL `c97fe3e7`. Neither matters for Vulkan.
+  While comparing, I also ported two SPIR-V fixes from upstream `55534165` into `spirv/internal/codegen/ray_query.go`.
+  First, the intersection helper's triangle block (barycentrics/front_face) branched on "not none" instead of
+  "is triangle". Second, `rayQueryProceed` now skips `OpRayQueryProceedKHR` after traversal finishes, since calling it
+  again is UB in SPIR-V. The third part of that commit (the Terminate cache key) doesn't apply, because go-naga doesn't
+  implement `rayQueryTerminate` at all (upstream `7721a3e0`).
+- [x] **1.3** All three shaders pass `spirv-val --target-env vulkan1.2` with init tracking on and off, at SPIR-V 1.3
+  (go-wgpu's current `naga.Compile` default) and 1.4 (what the Rust corpus uses for ray queries). Nothing needed
+  fixing. **Caveat:** at SPIR-V **1.5+**, every shader (including the non-RT blit) fails SPIRV-Tools 2026.1's new
+  `VUID-StandaloneSpirv-None-10684`, an `Offset` decoration on a struct used in Function storage. **Rust naga at
+  `14328f49` fails it identically**, so it's upstream behavior, not a go-naga deviation. It only matters if task 2.9
+  makes go-wgpu pick SPIR-V 1.5 the way Rust does for Vulkan 1.2+ devices.
+- [ ] **1.4** `go.work` (`use . ../go-naga`) created and excluded through `.git/info/exclude`, so it isn't
+  committed. With it, `go build ./...`, `-tags rust`, and wasm all build, and `go test ./...` passes. Same result with
+  `GOWORK=off`, so the v0.19.0 → v0.20.3 naga jump didn't regress anything. **Remaining:** commit and release the
+  go-naga changes, then bump `github.com/gogpu/naga` in `go.mod` and drop `go.work`.
+- [ ] **1.5** (found in 1.3; optional, needed for Phase 5.5) Port the remaining upstream ray-query commits to go-naga:
+  MSL `f6d9a1db` (intersection queries) and `a03be8d2` (safety), HLSL `c97fe3e7` (safety), and SPIR-V `7721a3e0`
+  (`rayQueryTerminate`). The `rust_deviations_test.go` entries for `ray-query*` and the new example shaders will
+  then start failing as "no longer a difference", which is the signal to delete them.
 
 ### Phase 2 — Vulkan HAL enablement (`hal/vulkan`)
 
@@ -343,6 +368,17 @@ Gaps found while porting (not ray tracing specific; fix when convenient):
 - [ ] **2.7** Add the Vulkan buffer barrier mapping for the `BufferUses` AS states
   (`BOTTOM/TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT`, `ACCELERATION_STRUCTURE_SCRATCH`) in `core/track`
   and `hal/vulkan` barrier conversion, if they're missing. Compare with Rust `conv.rs map_buffer_usage_to_barrier`.
+- [ ] **2.9** (found in Phase 1) **Shader compile options parity.** `hal/vulkan/device.go:1243` calls
+  `naga.Compile`, which goes through `naga.CompileWithOptions`. That function builds a bare `spirv.Options` with only
+  Version/Debug/BoundsCheckPolicies, so it **drops `RayQueryInitTracking`** (and `ForceLoopBounding` /
+  `UseStorageInputOutput16`), even though `spirv.DefaultOptions()` sets them. Rust's Vulkan HAL
+  (`adapter.rs` ~2900–3000) uses `ray_query_initialization_tracking: true` (unless the shader module is created
+  trusted), `force_loop_bounding: true`, Restrict bounds checks, a `RayQueryKHR` capability when the feature is
+  enabled, and a SPIR-V version from the device API version (1.3 for Vulkan 1.1, 1.5 for 1.2, 1.6 for 1.3+, at least
+  1.4 with `VK_KHR_spirv_1_4`). Either expose these in `naga.CompileOptions`, or have hal/vulkan call
+  Parse/Lower/Validate/ProcessOverrides/`GenerateSPIRV` with `spirv.DefaultOptions()` plus overrides. See 1.3's
+  SPIR-V 1.5 caveat before raising the version. This isn't needed for the examples to render correctly; it's a
+  safety/parity item.
 - [ ] **2.8** Add a HAL-level smoke test, gated on Vulkan + RT availability (skip otherwise). It should create a BLAS
   with one triangle, a TLAS with one instance, and run a compute shader with a ray query that writes hit/miss to a
   storage buffer, then read the result back. This exercises everything in Phase 2 before core exists.
@@ -403,8 +439,10 @@ Gaps found while porting (not ray tracing specific; fix when convenient):
 
 - **Hardware:** Vulkan RT needs a real driver (NVIDIA, RADV, or ANV). lavapipe doesn't support
   `VK_KHR_acceleration_structure`. Skip GPU tests cleanly when `FeatureRayQuery` isn't in `adapter.Features()`.
-- **Tools to install:** `vulkan-tools` (`vulkaninfo`), `spirv-tools` (`spirv-val`, `spirv-dis`), and the Vulkan validation
-  layers. Run the examples with validation layers on (create the instance with
+- **Tools:** `vulkan-tools` (`vulkaninfo`), `spirv-tools` (`spirv-val`, `spirv-dis`, SPIRV-Tools 2026.1), and
+  `vulkan-validationlayers` are **installed** as of Phase 1 (apt). `vulkaninfo` sees the RTX 5080 (NVIDIA, Vulkan 1.4.329)
+  and llvmpipe. `spirv-cross` is **not** installed. Rust naga's snapshot driver needs it for `.spvasm.glsl` side files,
+  so the Phase 1 references were generated with a local patch that skips it (scratch worktree only). Run the examples with validation layers on (create the instance with
   `Flags: gputypes.InstanceFlagsDebug`; see `hal/vulkan/api.go:83`) and treat any validation message as a bug.
 - **Reference output:** run the Rust examples for comparison with
   `cargo run --bin wgpu-examples ray_traced_triangle` from `../rust-wgpu`. The Rust GPU tests live in
@@ -428,3 +466,4 @@ Gaps found while porting (not ray tracing specific; fix when convenient):
 |---|---|
 | 2026-10-18 | Research + this plan. Created branch `rt-work`. Found and root-caused the go-naga `CompactTypes` SpecialTypes remap bug (fix verified, then reverted; tracked as task 1.1). Found Vulkan RT blockers (§1.1). No code changes yet. |
 | 2026-10-18 | Phase 0 done: `examples/ray-traced-triangle`, `examples/ray-scene` (behind `rtwip`), shared `examples/internal/rtexample`. Examples type-check against a temporary §2 shim. Next: Phase 1 (go-naga). |
+| 2026-10-18 | Phase 1 (go-naga, uncommitted on `../go-naga` `rt-work`): fixed the `CompactTypes` SpecialTypes bug (1.1) and ported two SPIR-V ray-query fixes from upstream `55534165`. Added the example shaders to the own corpus with optional per-shader TOML and Rust-derived references; IR matches Rust exactly, and MSL/HLSL deviations are recorded (1.2). `spirv-val --target-env vulkan1.2` is clean at SPIR-V 1.3/1.4 (1.3). go-wgpu uses `go.work` → `../go-naga`, and builds and tests clean (1.4, pending naga release). New tasks: 1.5 (port remaining MSL/HLSL/terminate commits), 2.9 (Vulkan shader compile options parity, notably init tracking). Next: release naga + bump `go.mod`, then Phase 2. |
